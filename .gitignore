@@ -1,0 +1,11 @@
+# Local editor/tooling settings
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor cruft
+.DS_Store
+.ipynb_checkpoints/

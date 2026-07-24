@@ -1,0 +1,98 @@
+{
+  "output_sha256": {
+    "ev71_2a_x7259a-density-analysis.json": "02e401c7ad10ab98b0389304177d67bed52d0137a6fb5a1f048fa76c07264fb2",
+    "ev71_2a_x7259a-frame-site-series.npz": "51d53ed4a65e2cc316a66c01d5be06c9d88ec8cce9be8f0832c50014308f0c9e",
+    "ev71_2a_x7259a-hydration-sites.pdb": "d8c47d44ab4fd878a5effbf7d726da7c67a8776c91ca99384dd4f060350c7ec6",
+    "ev71_2a_x7259a-site-catalog.csv": "da5b6fb4050b39e194291afe84cc7d03446a715c14df4adfcf90695a410684bb",
+    "ev71_2a_x7259a-site-metrics.csv": "a78601812bf2442e7a28ed729fc5ca205046af981392d375fdfd3763ca8845b5",
+    "ev71_2a_x7259a-water-density.npz": "33c0a5806b77e2f2d0288d8fb6bcf319c5f1cc79bcad4cd33f83a79604d1f3d6",
+    "ev71_2a_x7259a-water-relative-density.dx": "ac84d7f358b17d1e0e49548191e829ff6eb4a2a6ba453fcee6742e329645d39b"
+  },
+  "signature": {
+    "alignment_reference_sha256": "08946235c585777a803117dfac9df85c9f55aabf2575fb96f55bd05fd26b728f",
+    "blocks": 5,
+    "ghost_file_sha256": "ea2768ad5b3694890fefd27ee9f2069c803099f9d71616b0e03983ad3ffc4474",
+    "grid_spacing_angstrom": 0.5,
+    "hbond_angle_cutoff_degrees": 150.0,
+    "hbond_distance_cutoff_angstrom": 3.5,
+    "implementation": {
+      "dependency_versions": {
+        "mdtraj": "1.11.1",
+        "numpy": "2.4.6",
+        "scipy": "1.18.0"
+      },
+      "module_sha256": {
+        "mdtraj": "5223f8af5a0257a8d25313683eb4b1823074feaf66753b01e9ec9e08b8a67b80",
+        "scipy.ndimage": "152078253674980440f3e1edf71f27f5a086fccf92b2c2d389e9feba80d978e1",
+        "scipy.optimize": "ed9cde3ea145d57d77efb7ffb3776955d7a0e7523763031a9ee87c3e5e0cd661"
+      },
+      "module_versions": {
+        "mdtraj": "1.11.1",
+        "scipy": "1.18.0"
+      },
+      "python": "3.12.13",
+      "source_sha256": {
+        "ev71_density_sites.py": "ff0220bde96a319c9da19666da6652832c7e4b88ae9fce409754a7fff4474797",
+        "pipeline_utils.py": "f13dc1d21c347450363f89c11991fb79899e9229280ba8e93f0508fe1addcd08"
+      }
+    },
+    "ligand_overlap_cutoff_angstrom": 2.4,
+    "ligand_resname": "LIG",
+    "maximum_sites": 250,
+    "minimum_peak_separation_angstrom": 2.4,
+    "minimum_relative_density": 1.5,
+    "minimum_site_occupancy": 0.2,
+    "prefix": "ev71_2a_x7259a",
+    "site_assignment_radius_angstrom": 1.4,
+    "site_catalog_sha256": "da5b6fb4050b39e194291afe84cc7d03446a715c14df4adfcf90695a410684bb",
+    "smoothing_sigma_angstrom": 0.75,
+    "sphere_radius_angstrom": 10.0,
+    "topology_sha256": "eaae05a03a5e5a6d11add2052859362535996fca8113832745a6aa23b7d8ee61",
+    "trajectory_sha256": "d0a52eb482a43d5cec4ebe8c4577b6e1dc8523e372c3c320024b9e16caaae83c"
+  },
+  "status": "completed",
+  "summary": {
+    "alignment_reference": "/home/moshe/intern_projects/project_2/openbind_ev71_2a_pyrrolidine_benchmark_release/receptor/ev71_2a_x7339a_template_prepared.pdb",
+    "blocks_used": 5,
+    "grid": {
+      "bulk_water_number_density_per_angstrom3": 0.0334,
+      "origin_angstrom": [
+        -3.0,
+        3.0,
+        14.0
+      ],
+      "shape": [
+        44,
+        44,
+        44
+      ],
+      "smoothing_sigma_angstrom": 0.75,
+      "spacing_angstrom": 0.5
+    },
+    "hydration_sites": 7,
+    "hydrogen_bond_interpretation": "Geometry-only candidate hydrogen bonds: N/O/S donors and acceptors, heavy-atom distance and D-H-A angle cutoffs; no protonation-aware acceptor typing.",
+    "outputs": {
+      "density_npz": "ev71_2a_x7259a-water-density.npz",
+      "frame_site_series_npz": "ev71_2a_x7259a-frame-site-series.npz",
+      "hydration_sites_pdb": "ev71_2a_x7259a-hydration-sites.pdb",
+      "relative_density_dx": "ev71_2a_x7259a-water-relative-density.dx",
+      "site_catalog_csv": "ev71_2a_x7259a-site-catalog.csv",
+      "site_metrics_csv": "ev71_2a_x7259a-site-metrics.csv"
+    },
+    "physical_water_observations": 133682,
+    "protein_ca_atoms": 139,
+    "purpose": "Project 2 hydration-site occupancy and ligand-displacement analysis",
+    "site_assignment": "one-to-one minimum-distance assignment per frame",
+    "site_catalog_input": "/home/moshe/intern_projects/project_1/validation_outputs/x7259a-density/ev71_2a_x7259a-site-catalog.csv",
+    "site_catalog_mode": "reused_common_catalog",
+    "sphere_water_count": {
+      "maximum": 66,
+      "mean": 53.4728,
+      "minimum": 41
+    },
+    "status": "completed",
+    "trajectory_frames": 2500,
+    "wall_seconds": 7.548401355743408
+  },
+  "wall_seconds": 7.548740386962891
+}

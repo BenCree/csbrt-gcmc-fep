@@ -1,0 +1,15 @@
+{
+  "common_sites": 7,
+  "input_catalog_count": 2,
+  "input_catalogs": [
+    "/home/moshe/intern_projects/project_1/validation_outputs/x7259a-density/ev71_2a_x7259a-site-catalog.csv",
+    "/home/moshe/intern_projects/project_1/validation_outputs/x7259a-common-catalog/ev71_2a_x7259a-site-catalog.csv"
+  ],
+  "input_sites": 14,
+  "instruction": "Pass this exact CSV as --site-catalog to ev71_density_sites.py for every ligand and replica. Inputs must share one alignment reference.",
+  "merge_cutoff_angstrom": 2.4,
+  "merge_method": "complete_linkage",
+  "minimum_catalog_support": 1,
+  "output_catalog": "/home/moshe/intern_projects/project_1/validation_outputs/common-site-catalog.csv",
+  "status": "completed"
+}

@@ -1,0 +1,16 @@
+REMARK Hydration sites: occupancy in occupancy, relative density in B-factor
+REMARK SITE 1 ID HS001
+HETATM    1 O    WAT     1       7.240  20.149  19.345  1.00  3.59           O
+REMARK SITE 2 ID HS002
+HETATM    2 O    WAT     2      13.723  12.909  25.282  0.95  2.77           O
+REMARK SITE 3 ID HS003
+HETATM    3 O    WAT     3       3.263   5.740  24.639  0.90  2.51           O
+REMARK SITE 4 ID HS004
+HETATM    4 O    WAT     4       3.393  12.798  20.201  0.76  1.94           O
+REMARK SITE 5 ID HS005
+HETATM    5 O    WAT     5       3.216   9.904  28.313  0.71  1.86           O
+REMARK SITE 6 ID HS006
+HETATM    6 O    WAT     6      12.114   8.764  30.878  0.72  1.78           O
+REMARK SITE 7 ID HS007
+HETATM    7 O    WAT     7       5.189  20.795  27.702  0.62  1.54           O
+END

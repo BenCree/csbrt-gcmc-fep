@@ -1,0 +1,149 @@
+{
+  "input": {
+    "completed_submission": "20260716T053049Z-1509066",
+    "ligands": 32,
+    "replicas_per_ligand": 6,
+    "runs": 192,
+    "frames_per_run": 2500,
+    "total_frames": 480000,
+    "common_sites": 33
+  },
+  "integrity": {
+    "protocol_issues": [],
+    "analysis_validation_issues": [],
+    "maximum_preparation_pose_rmsd_A": 0.000550715732764755
+  },
+  "site_filter": {
+    "analysis_site_count": 20,
+    "analysis_sites": [
+      "HS001",
+      "HS002",
+      "HS003",
+      "HS004",
+      "HS005",
+      "HS006",
+      "HS007",
+      "HS008",
+      "HS009",
+      "HS010",
+      "HS011",
+      "HS012",
+      "HS013",
+      "HS014",
+      "HS015",
+      "HS016",
+      "HS017",
+      "HS018",
+      "HS019",
+      "HS027"
+    ],
+    "analysis_neighborhood_count": 17,
+    "analysis_neighborhoods": [
+      "NG01",
+      "NG02",
+      "NG03",
+      "NG04",
+      "NG05",
+      "NG06",
+      "NG07",
+      "NG08",
+      "NG09",
+      "NG10",
+      "NG11",
+      "NG12",
+      "NG13",
+      "NG14",
+      "NG15",
+      "NG16",
+      "NG21"
+    ],
+    "overlapping_coordinate_components": 7,
+    "sites_in_overlapping_components": 15,
+    "tier_counts": {
+      "reproducible_ligand_specific": 13,
+      "tentative_low_support": 13,
+      "series_consensus": 5,
+      "provisional_series": 2
+    }
+  },
+  "replicates": {
+    "median_within_ligand_profile_rmse": 0.17485573052197112,
+    "median_between_ligand_single_run_profile_rmse": 0.1823932266868172,
+    "median_between_ligand_mean_profile_rmse": 0.09378715846465069,
+    "probability_between_run_distance_exceeds_within_run_distance": 0.5466086912895759,
+    "loo_nearest_centroid_accuracy": 0.125,
+    "loo_median_true_ligand_rank": 12.0,
+    "replicate_index_kruskal_p_for_profile_error": 0.7150540449112778
+  },
+  "sites": {
+    "series_consensus": [
+      "HS001",
+      "HS002",
+      "HS003",
+      "HS004",
+      "HS005"
+    ],
+    "individual_ligand_sensitive_before_neighborhood_sensitivity": [
+      "HS015",
+      "HS019",
+      "HS012",
+      "HS018",
+      "HS008",
+      "HS027"
+    ],
+    "robust_ligand_sensitive_neighborhoods": {
+      "NG16": "HS019",
+      "NG15": "HS018",
+      "NG08": "HS008;HS013;HS015",
+      "NG21": "HS027",
+      "NG03": "HS003;HS023"
+    },
+    "conserved_geometry_only_bridge_candidates": [
+      "HS009"
+    ]
+  },
+  "convergence": {
+    "median_site_run_abs_first_last_block_change": 0.048,
+    "fraction_site_runs_abs_change_gt_0_1": 0.24763257575757575
+  },
+  "sphere_waters": {
+    "run_mean_range": [
+      46.632,
+      66.454
+    ],
+    "absolute_observed_range": [
+      36,
+      83
+    ],
+    "spearman_vs_pKD": 0.28335777126099704,
+    "p_value": 0.11605593046866931
+  },
+  "chemical_vs_hydration": {
+    "spearman_tanimoto_vs_hydration_rmse": -0.17742568972288297,
+    "asymptotic_p": 7.095725014640293e-05,
+    "permutation_p": 0.029985007496251874
+  },
+  "affinity": {
+    "all_sites_bh_q_lt_0_05": [
+      "HS005",
+      "HS008",
+      "HS014",
+      "HS031"
+    ],
+    "supported_sites_bh_q_lt_0_05": [
+      "HS005",
+      "HS008",
+      "HS014"
+    ],
+    "supported_neighborhoods_bh_q_lt_0_05": [
+      "NG05"
+    ]
+  },
+  "cautions": [
+    "Common-site coordinates were learned from all runs; tests are descriptive/exploratory, not held-out validation.",
+    "Hydrogen-bond and bridge flags are geometry-only candidates, not protonation-aware chemical assignments.",
+    "Tentative low-support catalog sites should not be interpreted as series-wide hydration sites.",
+    "Individual coordinates closer than the 1.4 A assignment radius compete for water labels; prefer neighborhood sensitivity results.",
+    "First-versus-last block differences diagnose drift but do not prove full thermodynamic convergence."
+  ]
+}

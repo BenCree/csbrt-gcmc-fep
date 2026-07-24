@@ -1,0 +1,12 @@
+name: automated-fep
+channels:
+  - conda-forge
+  - openbiosim
+dependencies:
+  - python=3.12
+  - somd2=2026.1.0
+  # Required for Loch/PyCUDA runtime kernel compilation in SOMD2 GCMC.
+  - cuda-nvvm
+  - ambertools
+  - rdkit
+  - parmed

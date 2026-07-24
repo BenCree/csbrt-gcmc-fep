@@ -1,0 +1,49 @@
+{
+  "analysis_unit": "32 ligands; each ligand estimate is the mean of six independent replicas",
+  "ligands": 32,
+  "replicas_per_ligand": 6,
+  "supported_neighborhoods": 17,
+  "ligand_neighborhood_estimates": 544,
+  "within_ligand_replica_range": {
+    "q25": 0.11409999999999995,
+    "median": 0.21639999999999998,
+    "q75": 0.36029999999999995,
+    "p90": 0.53004,
+    "p95": 0.6567600000000001
+  },
+  "uncertainty_of_six_replica_mean_profile": {
+    "median_rms_sem": 0.055820275563771754,
+    "minimum_rms_sem": 0.03583905927803687,
+    "maximum_rms_sem": 0.08536375775031757
+  },
+  "agreement_between_ligand_means": {
+    "profile_correlation_p10_median_p90": [
+      0.8364778978830003,
+      0.9168966931805582,
+      0.9617951475867241
+    ],
+    "profile_rmse_p10_median_p90": [
+      0.06346486958982689,
+      0.0937871584646507,
+      0.12920696139454524
+    ]
+  },
+  "informative_neighborhoods": [
+    "NG16",
+    "NG15",
+    "NG08",
+    "NG21",
+    "NG03"
+  ],
+  "descriptive_clustering": {
+    "selected_k_by_silhouette": 2,
+    "silhouette": 0.47125878144503086,
+    "cluster_sizes": {
+      "1": 2,
+      "2": 30
+    }
+  },
+  "significant_mean_occupancy_vs_pKD_after_bh": [
+    "NG05"
+  ]
+}

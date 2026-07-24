@@ -1,0 +1,43 @@
+{
+  "alignment_reference": "/home/moshe/intern_projects/project_2/openbind_ev71_2a_pyrrolidine_benchmark_release/receptor/ev71_2a_x7339a_template_prepared.pdb",
+  "blocks_used": 5,
+  "grid": {
+    "bulk_water_number_density_per_angstrom3": 0.0334,
+    "origin_angstrom": [
+      -3.0,
+      3.0,
+      14.0
+    ],
+    "shape": [
+      44,
+      44,
+      44
+    ],
+    "smoothing_sigma_angstrom": 0.75,
+    "spacing_angstrom": 0.5
+  },
+  "hydration_sites": 7,
+  "hydrogen_bond_interpretation": "Geometry-only candidate hydrogen bonds: N/O/S donors and acceptors, heavy-atom distance and D-H-A angle cutoffs; no protonation-aware acceptor typing.",
+  "outputs": {
+    "density_npz": "ev71_2a_x7259a-water-density.npz",
+    "frame_site_series_npz": "ev71_2a_x7259a-frame-site-series.npz",
+    "hydration_sites_pdb": "ev71_2a_x7259a-hydration-sites.pdb",
+    "relative_density_dx": "ev71_2a_x7259a-water-relative-density.dx",
+    "site_catalog_csv": "ev71_2a_x7259a-site-catalog.csv",
+    "site_metrics_csv": "ev71_2a_x7259a-site-metrics.csv"
+  },
+  "physical_water_observations": 133682,
+  "protein_ca_atoms": 139,
+  "purpose": "Project 2 hydration-site occupancy and ligand-displacement analysis",
+  "site_assignment": "one-to-one minimum-distance assignment per frame",
+  "site_catalog_input": "/home/moshe/intern_projects/project_1/validation_outputs/x7259a-density/ev71_2a_x7259a-site-catalog.csv",
+  "site_catalog_mode": "reused_common_catalog",
+  "sphere_water_count": {
+    "maximum": 66,
+    "mean": 53.4728,
+    "minimum": 41
+  },
+  "status": "completed",
+  "trajectory_frames": 2500,
+  "wall_seconds": 7.548401355743408
+}
