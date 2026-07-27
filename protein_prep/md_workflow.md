@@ -42,9 +42,10 @@ a physically discontinuous backbone.
 
 Protein preparation, system assembly and MD were performed with OpenFE 1.10.0
 and gufe 1.9.0, using OpenMM 8.4.0, the OpenFF Toolkit 0.18.0,
-OpenMMForceFields 0.15.1, PDBFixer 1.12.0 and RDKit 2024.09.2. Loop modelling
-was performed in separate environments using PyTorch 2.6.0 (CUDA 12.4 build),
-Boltz-2 (v2.2.1) and Biopython 1.87. All calculations were run on a workstation
+OpenMMForceFields 0.15.1, PDBFixer 1.12.0 and RDKit 2024.09.2. Protonation-state
+assignment used PDB2PQR 3.7.1 with PROPKA 3.5.1. Loop modelling was performed in
+separate environments using PyTorch 2.6.0 (CUDA 12.4 build), Boltz-2 (v2.2.1) and
+Biopython 1.87. All calculations were run on a workstation
 equipped with an NVIDIA RTX 4000 Ada Generation GPU (20 GB, driver 550.127.05,
 CUDA 12.4).
 
@@ -57,13 +58,26 @@ for the same reason.
 
 ### 2.2 Protein preparation
 
-The receptor was processed with PDBFixer. Missing heavy atoms were added, and
-hydrogens were added for a target pH of 7.0; crystallographic waters were
-retained and protonated. A single free lysine residue present as an isolated,
-unbonded chain (chain C, LYS113) was removed, since a free amino acid has no
-template in the Amber protein force field and it is not part of the functional
-protein. Chains consisting of a single standard amino-acid residue are detected
-and removed automatically. The prepared receptor comprised 8177 atoms.
+The receptor was processed with PDBFixer to add missing heavy atoms. A single
+free lysine residue present as an isolated, unbonded chain (chain C, LYS113) was
+removed, since a free amino acid has no template in the Amber protein force field
+and it is not part of the functional protein; chains consisting of a single
+standard amino-acid residue are detected and removed automatically.
+Crystallographic waters were retained.
+
+Protonation states were then assigned at pH 7.0 with PDB2PQR (v3.7.1) using
+PROPKA (v3.5.1) for pKa prediction, rather than a fixed-rule scheme: this sets
+histidine tautomers (HID/HIE/HIP) and the protonation of Asp/Glu/Lys/Cys
+according to their predicted pKa and local hydrogen-bonding. The resulting states
+were applied as residue variants when OpenMM placed the hydrogens, so that the
+added atoms remain compatible with the Amber ff14SB templates; crystallographic
+waters were protonated in the same step. For 7DLI this assigned eight histidines
+as HID, one as HIE and one as doubly-protonated HIP, and one buried glutamate
+(Glu285) as neutral GLH — states a fixed-pH template scheme would not capture.
+One cysteine flagged by PROPKA as a thiolate (CYM) was retained as neutral CYS,
+as a lone deprotonated cysteine at pH 7 is unusual and warrants manual inspection.
+If PDB2PQR is unavailable the pipeline falls back to OpenMM's template-based
+hydrogen placement at the same pH.
 
 ### 2.3 Identification and modelling of the missing loop
 

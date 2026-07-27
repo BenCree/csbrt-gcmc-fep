@@ -9,6 +9,8 @@ cd "$REPO"
 MD_PY="${MD_PY:-$HOME/miniforge3/envs/openfe/bin/python}"
 BOLTZ_PY="${BOLTZ_PY:-$HOME/miniforge3/envs/boltz/bin/python}"
 BOLTZ="${BOLTZ:-$HOME/miniforge3/envs/boltz/bin/boltz}"
+# PDB2PQR/PROPKA binary (from the `protonate` env) used for pH-based protonation.
+export PDB2PQR="${PDB2PQR:-$HOME/miniforge3/envs/protonate/bin/pdb2pqr30}"
 
 echo "== Step 1: identify the missing loop (sequence alignment) =="
 "$MD_PY" scripts/1_analyze_gap.py

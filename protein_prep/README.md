@@ -27,8 +27,11 @@ See [`md_workflow.md`](md_workflow.md) for the full methods write-up.
    395A–395F), preserving the experimental binding-site coordinates,
    crystallographic waters and residue numbering.
 4. **Prepare + simulate** with OpenFE: PDBFixer (drop a stray free lysine, keep
-   waters, add H), ligand AM1-BCC charges, Amber ff14SB + OpenFF Sage + TIP3P,
-   then minimize → NVT → NPT → production.
+   waters), **protonate at pH 7 with PDB2PQR/PROPKA** (His tautomers and
+   Asp/Glu/Lys/Cys states assigned by pKa; hydrogens then placed by OpenMM so
+   they stay amber14-compatible), ligand AM1-BCC charges, Amber ff14SB + OpenFF
+   Sage + TIP3P, then minimize → NVT → NPT → production. If the `protonate` env
+   is absent, prep falls back to OpenMM's template-based hydrogens at the same pH.
 
 The receptor is a single protein chain: 7DLI's three crystal chains are identical
 copies (not a biological oligomer — an assembly prediction gave interface
@@ -43,6 +46,7 @@ correct simulated unit.
 ├── md_workflow.md             detailed methods write-up
 ├── environment-md.yml         conda/mamba env for prep + MD (OpenFE/OpenMM)
 ├── environment-boltz.yml      conda/mamba env for loop modelling (Boltz-2)
+├── environment-protonate.yml  conda/mamba env for protonation (PDB2PQR/PROPKA)
 ├── run_all.sh                 runs the whole pipeline end to end
 ├── inputs/
 │   ├── recfinal_7dli_water.pdb   receptor (chain B) + crystallographic waters
@@ -66,8 +70,9 @@ correct simulated unit.
 ## Setup
 
 ```bash
-mamba env create -f environment-md.yml      # creates env "openfe"
-mamba env create -f environment-boltz.yml   # creates env "boltz"
+mamba env create -f environment-md.yml         # creates env "openfe"  (prep + MD)
+mamba env create -f environment-boltz.yml      # creates env "boltz"   (loop modelling)
+mamba env create -f environment-protonate.yml  # creates env "protonate" (PDB2PQR/PROPKA)
 ```
 
 Two environment notes for this hardware (CUDA 12.4 driver):

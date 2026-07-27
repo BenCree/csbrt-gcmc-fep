@@ -2,21 +2,31 @@
 """Step 4 — protein preparation + MD of the loop-completed complex (OpenFE).
 
 Fixes the loop-completed receptor (removes the stray free lysine, keeps crystal
-waters, adds hydrogens), loads the 7dli ligand, assembles an OpenFE
-ChemicalSystem and runs PlainMDProtocol: minimize -> NVT -> NPT -> production.
+waters), protonates it at pH 7 with PDB2PQR/PROPKA (His tautomers and
+Asp/Glu/Lys/Cys states assigned, hydrogens placed by OpenMM so they stay
+amber14-compatible), loads the 7dli ligand, assembles an OpenFE ChemicalSystem
+and runs PlainMDProtocol: minimize -> NVT -> NPT -> production.
+
+Needs the `protonate` env (pdb2pqr + propka) for the PDB2PQR binary; if it is
+not found, prep falls back to OpenMM's template-based hydrogens at the same pH.
 
 Run in the MD environment:
     python scripts/4_run_md.py
 """
 
+import collections
+import os
 import pathlib
+import shutil
+import subprocess
+import tempfile
 
 import gufe
 from openfe import (ChemicalSystem, ProteinComponent, SmallMoleculeComponent,
                     SolventComponent)
 from openfe.protocols.openmm_md.plain_md_methods import PlainMDProtocol
 from openff.units import unit
-from openmm.app import Modeller, PDBFile
+from openmm.app import ForceField, Modeller, PDBFile
 from pdbfixer import PDBFixer
 from rdkit import Chem
 
@@ -25,6 +35,10 @@ AMINO_ACIDS = {
     "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
     "HID", "HIE", "HIP", "CYX", "ASH", "GLH", "LYN",
 }
+# AMBER residue name (from PDB2PQR --ffout=AMBER) -> OpenMM addHydrogens variant.
+# CYM (deprotonated Cys) has no add-H variant and is left as neutral CYS.
+PROPKA_VARIANT = {"HID": "HID", "HIE": "HIE", "HIP": "HIP",
+                  "ASH": "ASH", "GLH": "GLH", "LYN": "LYN", "CYX": "CYX"}
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 PROTEIN_PDB = REPO / "outputs" / "recfinal_7dli_water_loopmodelled.pdb"
@@ -32,6 +46,15 @@ FIXED_PDB = REPO / "outputs" / "recfinal_7dli_water_loopmodelled_fixed.pdb"
 LIGAND_SDF = REPO / "inputs" / "cry1_ligands.sdf"
 LIGAND_NAME = "7dli"
 WORKDIR = REPO / "outputs" / "md"
+
+# Protonation: assign titratable states at PROTONATION_PH with PDB2PQR/PROPKA,
+# then place hydrogens with OpenMM. Set PDB2PQR to "" (or if the binary is
+# missing) to fall back to OpenMM's template-based hydrogens at the same pH.
+PROTONATION_PH = 7.0
+# Path to the pdb2pqr30 binary from the `protonate` env (set $PDB2PQR to override).
+PDB2PQR = (os.environ.get("PDB2PQR") or shutil.which("pdb2pqr30")
+           or str(pathlib.Path.home() / "miniforge3/envs/protonate/bin/pdb2pqr30"))
+FORCEFIELD = ForceField("amber14-all.xml", "amber14/tip3p.xml")
 
 # Short-but-real defaults; increase for production sampling.
 NVT_NS = 0.05
@@ -44,14 +67,29 @@ N_REPEATS = 1
 COMPUTE_PLATFORM = "OpenCL"
 
 
+def propka_states(protein_pdb):
+    """Run PDB2PQR/PROPKA and return {(chain, resid, icode): AMBER_resname}."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_pdb = pathlib.Path(tmp) / "pdb2pqr.pdb"
+        subprocess.run(
+            [PDB2PQR, "--ff=AMBER", f"--with-ph={PROTONATION_PH}",
+             "--titration-state-method=propka", "--keep-chain", "--ffout=AMBER",
+             f"--pdb-output={out_pdb}", str(protein_pdb), str(pathlib.Path(tmp) / "o.pqr")],
+            check=True, capture_output=True)
+        states = {}
+        for line in out_pdb.read_text().splitlines():
+            if line.startswith(("ATOM", "HETATM")):
+                states[(line[21], line[22:26].strip(), line[26])] = line[17:20].strip()
+    return states
+
+
 def fix_protein(in_pdb, out_pdb):
     print(f"[1/4] Fixing protein: {in_pdb.name}")
     fixer = PDBFixer(filename=str(in_pdb))
     fixer.findMissingResidues()
     fixer.missingResidues = {}          # loop is already modelled in
     fixer.findMissingAtoms()
-    fixer.addMissingAtoms()
-    fixer.addMissingHydrogens(7.0)
+    fixer.addMissingAtoms()              # heavy atoms only
 
     # Drop stray single amino-acid chains (e.g. free lysine); keep waters.
     modeller = Modeller(fixer.topology, fixer.positions)
@@ -65,10 +103,45 @@ def fix_protein(in_pdb, out_pdb):
     if stray:
         modeller.delete(stray)
 
+    # Assign titratable states with PDB2PQR/PROPKA (His tautomers, Asp/Glu/Lys/Cys),
+    # then let OpenMM place the hydrogens using those states as variants so the
+    # atoms stay amber14-compatible. Falls back to OpenMM defaults if unavailable.
+    variants = None
+    if PDB2PQR and pathlib.Path(PDB2PQR).exists():
+        prot = Modeller(modeller.topology, modeller.positions)
+        prot.delete([r for ch in prot.topology.chains()
+                     for r in ch.residues() if r.name == "HOH"])
+        with tempfile.TemporaryDirectory() as tmp:
+            prot_pdb = pathlib.Path(tmp) / "prot.pdb"
+            with open(prot_pdb, "w") as fh:
+                PDBFile.writeFile(prot.topology, prot.positions, fh, keepIds=True)
+            try:
+                states = propka_states(prot_pdb)
+            except subprocess.CalledProcessError as e:
+                print("      PDB2PQR failed, using OpenMM default protonation:",
+                      e.stderr.decode()[:200] if e.stderr else "")
+                states = None
+        if states is not None:
+            variants = []
+            summary = collections.Counter()
+            for res in modeller.topology.residues():
+                name = (states.get((res.chain.id, str(res.id), res.insertionCode or " "))
+                        or states.get((res.chain.id, str(res.id), " ")))
+                variants.append(PROPKA_VARIANT.get(name))
+                if name in ("HID", "HIE", "HIP", "ASH", "GLH", "LYN", "CYM", "CYX"):
+                    summary[name] += 1
+            print(f"      PROPKA states at pH {PROTONATION_PH}: {dict(summary)}")
+            if summary.get("CYM"):
+                print("      note: PROPKA flagged CYM (deprotonated Cys); kept as "
+                      "neutral CYS (no OpenMM add-H variant).")
+
+    modeller.addHydrogens(FORCEFIELD, pH=PROTONATION_PH, variants=variants)
+
     with open(out_pdb, "w") as fh:
         PDBFile.writeFile(modeller.topology, modeller.positions, fh, keepIds=True)
+    method = "PDB2PQR/PROPKA" if variants is not None else "OpenMM default"
     print(f"      wrote {out_pdb.name} ({modeller.topology.getNumAtoms()} atoms, "
-          "crystal waters kept)")
+          f"crystal waters kept, protonation: {method})")
     return out_pdb
 
 
