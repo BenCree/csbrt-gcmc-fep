@@ -14,9 +14,15 @@ See [`md_workflow.md`](md_workflow.md) for the full methods write-up.
    Ser395 and His396 (14.8 Å Cα–Cα) that is numbered over in the file. Aligning
    chain B to the deposited 7DLI sequence shows six disordered residues,
    **Phe-Phe-Gln-Gln-Phe-Phe (FFQQFF)**, belong there.
-2. **Model the loop with Boltz-2**, conditioned on the deposited `7dli.cif` as a
-   template and run single-sequence (no external MSA server). Because Boltz builds
-   the loop against both anchors, it closes on both ends.
+2. **Model the loop with Boltz-2 in the ligand-bound (holo) state.** Boltz
+   co-folds the protein together with the 7dli ligand, conditioned on the
+   deposited `7dli.cif` template, run single-sequence (no external MSA server),
+   with a pocket constraint that places the ligand in the crystallographic site.
+   Because Boltz builds the loop against both anchors it closes on both ends, and
+   because the loop is only ~7 Å from the pocket it must be built holo — with the
+   ligand present the loop shifts ~2 Å (up to 3.5 Å) relative to the apo model.
+   Boltz recovers the crystal binding mode (ligand ipTM 0.96; co-folded pose
+   within ~1 Å of the docked pose).
 3. **Graft only the six loop residues** into the crystal receptor (insertion codes
    395A–395F), preserving the experimental binding-site coordinates,
    crystallographic waters and residue numbering.
@@ -54,7 +60,7 @@ correct simulated unit.
 
 - Linux with an NVIDIA GPU (tested: RTX 4000 Ada, 20 GB, driver 550 / CUDA 12.4).
 - `conda`/`mamba` (miniforge recommended).
-- ~4 GB disk for the two environments plus ~1–2 GB for Boltz-2 weights
+- ~4 GB disk for the two environments plus ~6 GB for Boltz-2 weights (structure + affinity models + CCD)
   (downloaded on first run to `$BOLTZ_CACHE` or `~/.boltz`).
 
 ## Setup
@@ -111,6 +117,12 @@ Or run the steps individually (see the header of each script in `scripts/`).
 - The modelled loop is a single moderate-confidence conformation of a flexible
   region; for quantitative work, sample it (multiple models / longer
   equilibration) rather than trusting one pose.
+- Boltz-2 is stochastic, so the raw graft junction C(395F)–N(396) varies run to
+  run (~1–3 Å); `scripts/3_graft_loop.py` prints it. OpenMM's minimization (the
+  first MD step) closes junctions in that range to a normal ~1.33 Å peptide bond,
+  and the loop is continuous after equilibration. If a run ever produces a much
+  larger junction, add `--diffusion_samples 5` to the Boltz call and graft the
+  sample with the smallest junction.
 
 ## Software / references
 

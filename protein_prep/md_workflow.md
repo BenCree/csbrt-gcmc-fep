@@ -114,6 +114,19 @@ pLDDT 56–87, typical of an intrinsically disordered surface loop, so its
 conformation should be treated as a single plausible model to be relaxed and,
 ideally, sampled.
 
+Because the loop is only ~7 Å from the ligand, it was modelled in the
+ligand-bound (holo) state: Boltz-2 co-folded the protein together with the 7dli
+ligand (supplied as SMILES), conditioned on the 7DLI template and a pocket
+constraint tying the ligand to the crystallographic binding residues
+(auto-detected as those within 5 Å of the docked ligand). This holo model was of
+higher confidence than the apo prediction (pTM 0.96, complex pLDDT 0.92, ligand
+ipTM 0.96), and the co-folded ligand reproduced the crystallographic binding mode
+(centroid within ~1 Å of the docked pose after pocket alignment). Critically, the
+ligand shifts the loop: with flanks aligned (0.99 Å RMSD) the holo loop backbone
+differs from the apo loop by a mean of 2.3 Å (up to 3.5 Å), confirming that an
+apo model would misplace this pocket-adjacent loop. The holo loop was therefore
+grafted into the receptor and used for MD.
+
 ### 2.4 Ligand preparation
 
 The docked ligand corresponding to 7DLI was extracted by name from a

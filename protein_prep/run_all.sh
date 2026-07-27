@@ -17,7 +17,7 @@ echo "== Step 2: write the Boltz-2 input YAML (monomer) =="
 "$BOLTZ_PY" scripts/2_boltz_prep.py
 
 echo "== Step 2b: Boltz-2 loop modelling (template = 7dli.cif, single-sequence) =="
-# First run downloads the Boltz-2 weights (~1-2 GB) to \$BOLTZ_CACHE or ~/.boltz.
+# First run downloads the Boltz-2 weights (~6 GB) to \$BOLTZ_CACHE or ~/.boltz.
 # Drop --accelerator to auto-select the GPU; use cpu only if the GPU is too small.
 "$BOLTZ" predict outputs/boltz_7dli.yaml --out_dir outputs/boltz_out \
     --output_format pdb --override --no_kernels
