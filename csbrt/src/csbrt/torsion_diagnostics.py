@@ -72,38 +72,64 @@ def rotatable_torsions(sdf_path: Path) -> tuple[list[tuple[int, int, int, int]],
     return quads, names
 
 
-def wells(degrees: np.ndarray, bins: int = 36, min_occupancy: float = 0.02):
+def wells(degrees: np.ndarray, bins: int = 24, min_occupancy: float = 0.10,
+          min_separation_deg: float = 60.0):
     """Locate rotameric wells as histogram peaks on the periodic angle axis.
 
     Returns (labels, n_states, occupancies). Labels assign each frame to a well.
+
+    Three constraints keep this from fitting noise on short trajectories, which
+    is easy to do: a rotatable bond has at most about three physical wells, so
+    any method reporting nine or thirteen is counting individual frames.
+
+      bins=24              15 degree resolution; finer just splits sparse data
+      min_occupancy=0.10   a well must hold >=10% of frames, not one frame
+      min_separation=60    physical rotamers are not 15 degrees apart
+
+    The histogram is also smoothed circularly before peak finding so a single
+    empty bin between two occupied ones does not manufacture two wells.
     """
+    n = len(degrees)
+    if n == 0:
+        return np.zeros(0, dtype=int), 0, []
+
     hist, edges = np.histogram(degrees, bins=bins, range=(-180.0, 180.0))
-    total = hist.sum()
-    if total == 0:
-        return np.zeros(len(degrees), dtype=int), 0, []
+    if hist.sum() == 0:
+        return np.zeros(n, dtype=int), 0, []
 
-    # Peaks that are local maxima on the wrapped axis and carry real population.
-    peaks = [i for i in range(bins)
-             if hist[i] >= hist[(i - 1) % bins] and hist[i] >= hist[(i + 1) % bins]
-             and hist[i] / total >= min_occupancy]
-    if not peaks:
-        peaks = [int(np.argmax(hist))]
+    # Circular 3-bin smoothing.
+    smooth = (np.roll(hist, 1) + hist + np.roll(hist, -1)).astype(float)
 
-    centres = np.array([(edges[i] + edges[i + 1]) / 2 for i in peaks])
+    width = 360.0 / bins
+    min_gap = max(1, int(round(min_separation_deg / width)))
 
-    # Assign frames to the nearest peak centre, respecting periodicity.
-    delta = np.abs(degrees[:, None] - centres[None, :])
-    delta = np.minimum(delta, 360.0 - delta)
-    labels = np.argmin(delta, axis=1)
+    # Candidate peaks: circular local maxima, strongest first.
+    cand = [i for i in range(bins)
+            if smooth[i] >= smooth[(i - 1) % bins] and smooth[i] >= smooth[(i + 1) % bins]]
+    cand.sort(key=lambda i: smooth[i], reverse=True)
 
-    occ = [float(np.mean(labels == k)) for k in range(len(centres))]
+    chosen: list[int] = []
+    for i in cand:
+        if all(min(abs(i - j), bins - abs(i - j)) >= min_gap for j in chosen):
+            chosen.append(i)
+    if not chosen:
+        chosen = [int(np.argmax(smooth))]
+
+    centres = np.array([(edges[i] + edges[i + 1]) / 2 for i in sorted(chosen)])
+
+    def assign(cs):
+        d = np.abs(degrees[:, None] - cs[None, :])
+        d = np.minimum(d, 360.0 - d)
+        lab = np.argmin(d, axis=1)
+        return lab, [float(np.mean(lab == k)) for k in range(len(cs))]
+
+    labels, occ = assign(centres)
+
+    # Drop under-populated wells and reassign their frames to what remains.
     keep = [k for k, o in enumerate(occ) if o >= min_occupancy]
-    if len(keep) < len(centres):
+    if keep and len(keep) < len(centres):
         centres = centres[keep]
-        delta = np.abs(degrees[:, None] - centres[None, :])
-        delta = np.minimum(delta, 360.0 - delta)
-        labels = np.argmin(delta, axis=1)
-        occ = [float(np.mean(labels == k)) for k in range(len(centres))]
+        labels, occ = assign(centres)
     return labels, len(centres), occ
 
 
@@ -162,7 +188,14 @@ def analyse(topology: Path, trajectory: Path, ligand_sdf: Path,
         verdict = "ok"
         if n_states > 1 and n_trans == 0:
             verdict = "STUCK"
-        elif n_states > 1 and n_trans < 5:
+        elif n_states == 1:
+            # Ambiguous and not benign: a rotatable bond confined to one well
+            # either genuinely has one minimum, or is trapped and never sampled
+            # the others. A single trajectory cannot tell these apart -- compare
+            # the same torsion at the other lambda end state, in the other leg,
+            # or against the molecule's expected rotamers.
+            verdict = "single_well_unverified"
+        elif n_trans < 5:
             verdict = "undersampled"
         elif n_eff < 10:
             verdict = "correlated"
@@ -180,8 +213,9 @@ def analyse(topology: Path, trajectory: Path, ligand_sdf: Path,
         "status": "completed",
         "topology": str(topology), "trajectory": str(trajectory),
         "n_frames": int(traj.n_frames), "n_torsions": len(out),
-        "n_stuck": len(stuck), "n_undersampled": sum(1 for t in out
-                                                     if t["verdict"] == "undersampled"),
+        "n_stuck": len(stuck),
+        "n_undersampled": sum(1 for t in out if t["verdict"] == "undersampled"),
+        "n_single_well": sum(1 for t in out if t["verdict"] == "single_well_unverified"),
         "torsions": out,
     }
     # Well detection needs enough frames to populate a histogram. Below that the
@@ -213,7 +247,8 @@ def main() -> None:
     if report.get("warning"):
         print(f"WARNING: {report['warning']}")
     print(f"frames={report['n_frames']}  torsions={report.get('n_torsions', 0)}  "
-          f"stuck={report.get('n_stuck', 0)}  undersampled={report.get('n_undersampled', 0)}")
+          f"stuck={report.get('n_stuck', 0)}  undersampled={report.get('n_undersampled', 0)}  "
+          f"single_well={report.get('n_single_well', 0)}")
     for t in report.get("torsions", []):
         print(f"  {t['torsion']:24s} states={t['n_states']} trans={t['transitions']:5d} "
               f"g={t['statistical_inefficiency']:7.2f} n_eff={t['n_effective_samples']:7.1f} "
