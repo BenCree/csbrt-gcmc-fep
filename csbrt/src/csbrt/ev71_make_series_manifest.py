@@ -26,7 +26,9 @@ def options() -> argparse.Namespace:
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--replicates", type=int, default=6)
     parser.add_argument("--base-seed", type=int, default=20260714)
-    parser.add_argument("--prefix-template", default="ev71_2a_{ligand_id}")
+    parser.add_argument("--prefix-template", default="{ligand_id}",
+                        help="Output-filename prefix template; must not bake in a "
+                             "dataset name (default derives from the ligand id)")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 

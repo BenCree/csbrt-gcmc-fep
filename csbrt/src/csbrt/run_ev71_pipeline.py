@@ -145,7 +145,8 @@ def options() -> argparse.Namespace:
         "--ligand-library",
         type=Path,
     )
-    parser.add_argument("--ligand-id", default="x7259a")
+    parser.add_argument("--ligand-id", required=True,
+                        help="SDF record title to simulate (no default: a dataset-\n                              specific default silently simulates the wrong ligand)")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--prefix")
     parser.add_argument("--seed", type=int, default=20260714)
@@ -192,22 +193,23 @@ def main() -> None:
     opt = options()
     project = opt.project_dir.resolve()
     scripts = resolve_scripts_dir(project, "extract_ligands.py")
-    release = project / "openbind_ev71_2a_pyrrolidine_benchmark_release"
-    receptor = require_file(
-        opt.receptor
-        or release / "receptor" / "ev71_2a_x7339a_template_prepared.pdb"
-    )
-    library = require_file(
-        opt.ligand_library
-        or release / "ligands" / "pyrrolidine_32_rowan_docked_poses.sdf"
-    )
+    # No dataset-specific fallbacks: this pipeline is not EV71-specific, and a
+    # silent default receptor/library is how the wrong system gets simulated.
+    if opt.receptor is None:
+        raise SystemExit("--receptor is required (a prepared, protonated PDB)")
+    if opt.ligand_library is None:
+        raise SystemExit("--ligand-library is required (an SDF of prepared ligands)")
+    receptor = require_file(opt.receptor)
+    library = require_file(opt.ligand_library)
     if opt.seed < 0:
         raise ValueError("Seed must be nonnegative")
     if opt.cluster_stride < 1 or opt.max_distance_memory_gb <= 0:
         raise ValueError("Cluster stride and distance-memory limit must be positive")
     run_dir = opt.run_dir.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
-    prefix = opt.prefix or f"ev71_2a_{opt.ligand_id}"
+    # Output filenames must not bake in one dataset's name. Pass --prefix to
+    # override; the default is derived from the ligand actually being run.
+    prefix = opt.prefix or str(opt.ligand_id)
     through_index = STAGES.index(opt.through)
     forced = set(opt.force_stage)
     stage_times: dict[str, float] = {}

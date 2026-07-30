@@ -144,7 +144,8 @@ def stage_equilibrate(cfg: dict, out: Path, dry: bool) -> None:
 
 def stage_gcmc(cfg: dict, out: Path, dry: bool) -> None:
     ligand = need(cfg, "ligand_name", "gcmc")
-    prefix = cfg.get("prefix", f"ev71_2a_{ligand}")
+    # Generic default: no dataset name baked into output filenames.
+    prefix = cfg.get("prefix", str(ligand))
     # run_ev71_pipeline stages are preparation/equilibration/production/
     # postprocessing -- there is no "analysis" stage in the EV71 driver.
     run_dir = _endpoint(cfg, out, dry, "production", "gcmc")
