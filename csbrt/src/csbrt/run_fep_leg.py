@@ -37,6 +37,18 @@ def options() -> argparse.Namespace:
     parser.add_argument("--gcmc-standard-volume", default="30.345 A^3")
     parser.add_argument("--gcmc-excess-chemical-potential", default="-6.09 kcal/mol")
     parser.add_argument("--gcmc-bulk-sampling-probability", type=float, default=0.0)
+    parser.add_argument(
+        "--replica-exchange",
+        action="store_true",
+        help="Enable Hamiltonian replica exchange, overriding the config. Swaps "
+        "configurations between neighbouring lambda windows, which raises "
+        "adjacent-window overlap directly. Measured overhead is negligible "
+        "(SOMD2 keeps all replicas resident on the GPU rather than swapping "
+        "contexts in and out), but two costs are real: GPU memory scales with "
+        "num_lambda (SOMD2 logs its estimate before starting -- check it fits), "
+        "and mixing work scales as num_lambda^2 per cycle, where cycles = "
+        "runtime / energy_frequency. Raise energy_frequency for REX runs.",
+    )
     return parser.parse_args()
 
 
@@ -94,6 +106,17 @@ def main() -> None:
 
     output = opt.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
+
+    # --replica-exchange overrides the config. Write the amended config beside the
+    # leg so what actually ran is recorded, rather than mutating the shared file.
+    if opt.replica_exchange and not config_payload.get("replica_exchange"):
+        config_payload["replica_exchange"] = True
+        effective = output / "effective_config.yaml"
+        effective.write_text(yaml.safe_dump(config_payload, sort_keys=True))
+        config = effective
+        print(f"replica exchange enabled; effective config written to {effective}",
+              flush=True)
+
     marker = output / "fep_leg.complete.json"
     signature = {
         "leg": opt.leg,

@@ -181,6 +181,16 @@ def stage_fep(cfg: dict, out: Path, dry: bool) -> None:
 
 def stage_analysis(cfg: dict, out: Path, dry: bool) -> None:
     fep_root = Path(cfg.get("fep_root", out / "fep-runs"))
+
+    # Sweep for incomplete edges BEFORE fitting. run_fep_leg.py catches a single
+    # leg missing lambda windows, but across a whole network one absent marker is
+    # easy to miss -- and SOMD2 can exit 0 with every window dead.
+    run(script("audit_fep_network.py") + [
+        fep_root.parent,
+        "--glob", cfg.get("replicate_glob", fep_root.name),
+        "--overlap-threshold", cfg.get("overlap_threshold", 0.15),
+    ], dry=dry)
+
     run(script("aggregate_fep_network.py") + [
         "--manifest", cfg.get("fep_manifest", out / "fep_manifest.tsv"),
         "--fep-root", fep_root, "--output-dir", fep_root / "network_analysis",
