@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csbrt"
+version = "0.1.0"
+description = "Hydration-aware GCMC + FEP workflow: OpenFold3 loop modelling, Loch GCMC, SOMD2 relative FEP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# NOTE: the scientific stack (sire, somd2, loch, biosimspace, openmm, ambertools,
+# openfold3, torch) is intentionally NOT declared here. Those are conda/pip
+# packages installed via environment.yml; declaring them as pip requirements
+# would make `pip install` attempt to resolve packages that do not exist on PyPI.
+dependencies = ["pyyaml", "numpy"]
+
+[project.scripts]
+csbrt             = "csbrt.cli:main"
+csbrt-preprocess  = "csbrt.cli:preprocess"
+csbrt-equilibrate = "csbrt.cli:equilibrate"
+csbrt-gcmc        = "csbrt.cli:gcmc"
+csbrt-fep         = "csbrt.cli:fep"
+csbrt-analysis    = "csbrt.cli:analysis"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+csbrt = ["*.py", "*.yaml", "*.yml", "*.slurm", "*.sh"]

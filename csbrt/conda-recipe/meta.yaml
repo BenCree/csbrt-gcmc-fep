@@ -1,0 +1,82 @@
+{% set name = "csbrt" %}
+{% set version = "0.1.0" %}
+
+# Recipe for a PERSONAL anaconda.org channel (e.g. `anaconda upload`), not for
+# conda-forge. conda-forge cannot accept this package: its runtime dependencies
+# `loch`, `somd2` and `biosimspace` live only on the openbiosim channel, and
+# conda-forge forbids depending on other channels. The same missing packages also
+# rule out a pure-PyPI install, so conda is mandatory either way.
+#
+# Build and upload:
+#   conda build conda-recipe -c conda-forge -c openbiosim
+#   anaconda upload $(conda build conda-recipe --output)
+#
+# Consumers then need both channels:
+#   mamba install -c <your-channel> -c conda-forge -c openbiosim csbrt
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  entry_points:
+    - csbrt = csbrt.cli:main
+    - csbrt-preprocess = csbrt.cli:preprocess
+    - csbrt-equilibrate = csbrt.cli:equilibrate
+    - csbrt-gcmc = csbrt.cli:gcmc
+    - csbrt-fep = csbrt.cli:fep
+    - csbrt-analysis = csbrt.cli:analysis
+
+requirements:
+  host:
+    - python >=3.11
+    - pip
+    - setuptools >=68
+  run:
+    - python >=3.11
+    - pyyaml
+    - numpy >=2
+    # --- scientific stack (conda-only; see the note at the top) ---
+    - sire 2026.1.*
+    - biosimspace 2026.1.*
+    - loch 2026.1.*
+    - somd2 2026.1.*
+    - openmm 8.4.*
+    - ambertools
+    - parmed
+    - rdkit
+    - mdtraj
+    - mdanalysis
+    - biopython
+    - scipy
+    - pandas
+    - pyarrow
+    - scikit-learn
+    - matplotlib-base
+    - pymbar
+    # NOTE: openfold3, a CUDA torch build, pdb2pqr 3.7.1, propka 3.5.1 and
+    # slow-rotations are pip-only and are NOT declared here. Install them after
+    # the package (see install.sh / README), otherwise the preprocess stage and
+    # the sampling diagnostics are unavailable.
+
+test:
+  imports:
+    - csbrt
+  commands:
+    - csbrt --help
+    - csbrt-preprocess --help
+    - csbrt-equilibrate --help
+    - csbrt-gcmc --help
+    - csbrt-fep --help
+    - csbrt-analysis --help
+
+about:
+  home: https://github.com/BenCree/csbrt-gcmc-fep
+  license: MIT
+  summary: Hydration-aware GCMC + FEP workflow (OpenFold3 loop modelling, Loch GCMC, SOMD2 RBFE)

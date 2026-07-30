@@ -1,0 +1,20 @@
+output_dir: csbrt-run
+receptor:      ../protein_prep/inputs/recfinal_7dli_water.pdb
+template_cif:  ../protein_prep/inputs/7dli.cif
+receptor_chain: B
+template_chain: B
+ligand_sdf:    ../protein_prep/inputs/cry1_ligands.sdf
+ligand_name:   7d0m
+loop:
+  after_resid: 395
+  sequence:    FFQQFF
+use_msa_server: false
+runner_yaml: runner_turing.yml
+ph: 7.4
+keep_waters: false   # endpoint prep refuses HETATM; tleap solvates and GCMC re-places waters
+diffusion_samples: 1
+model_seeds: 1
+seed: 20260714
+profile: smoke
+prepared_receptor: csbrt-run/receptor_protonated.pdb
+prepared_ligands:  csbrt-run/ligands_h.sdf

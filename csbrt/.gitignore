@@ -1,0 +1,6 @@
+# run outputs
+csbrt-run/
+outputs/
+runs/
+*.egg-info/
+__pycache__/

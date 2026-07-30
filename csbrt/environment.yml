@@ -1,0 +1,64 @@
+name: csbrt
+# ONE environment for the whole workflow: OpenFold3 loop modelling -> protonation
+# -> Loch GCMC equilibration/production -> SOMD2 relative FEP -> analysis.
+#
+# Verified on an RTX 2080 Ti (2026-07): OpenMM CUDA context, Loch GCMC production,
+# a real SOMD2 FEP leg, and torch CUDA all work together in this single env.
+#
+# Two constraints make this possible, and both matter:
+#
+#  1. CUDA is pinned WHOLE to 12.8 (not just cuda-version). An unpinned cuda-nvcc
+#     resolves to 12.9, and OpenMM then fails on 12.8-capped cluster drivers with
+#     CUDA_ERROR_UNSUPPORTED_PTX_VERSION (222), silently producing zero output.
+#
+#  2. The structure predictor is OpenFold3, NOT Boltz-2. boltz 2.2.1 requires
+#     numpy<2.0 and Chai-1 requires numpy~=1.21, while sire/somd2/loch/mdtraj are
+#     built against numpy 2.x -- neither can share this environment. OpenFold3
+#     leaves numpy unpinned and supports explicit mmCIF templates plus ColabFold
+#     MSAs, so it does the same job inside one env.
+#
+# Install:
+#     mamba env create -f environment.yml
+#     mamba activate csbrt
+#     # CUDA torch for OpenFold3 (self-contained wheels; does not disturb the
+#     # conda CUDA 12.8 toolchain used by OpenMM/loch):
+#     pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.7.1
+#     pip install openfold3 pdb2pqr==3.7.1 propka==3.5.1 \
+#                 git+https://github.com/MobleyLab/slow-rotations.git
+#
+# NOTE: run `mamba env create` with -y in non-interactive contexts; without a TTY
+# it blocks on the "Confirm changes: [Y/n]" prompt and looks like a hung solve.
+channels:
+  - conda-forge
+  - openbiosim
+dependencies:
+  - python=3.12
+
+  # --- GCMC + FEP (one sire shared by loch and somd2) ---
+  - sire=2026.1.0
+  - biosimspace=2026.1.0
+  - loch=2026.1.0
+  - somd2=2026.1.0
+  - openmm=8.4.0
+
+  # --- CUDA toolchain, pinned whole (see note 1 above) ---
+  - cuda-version=12.8
+  - cuda-nvcc=12.8
+  - cuda-nvvm=12.8
+  - cuda-cudart-dev=12.8
+
+  # --- preparation / analysis ---
+  - ambertools
+  - parmed
+  - rdkit
+  - mdtraj
+  - mdanalysis
+  - biopython
+  - scipy
+  - pandas
+  - pyarrow
+  - scikit-learn
+  - matplotlib-base
+  - pymbar
+  - pyyaml
+  - pip

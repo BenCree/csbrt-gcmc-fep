@@ -5,6 +5,11 @@ channels:
 dependencies:
   - python=3.12
   - somd2=2026.1.0
+  # Pin CUDA to what the cluster GPU driver supports (max 12.8). Without this,
+  # conda resolves the newest CUDA (e.g. 12.9) and OpenMM's kernels fail at
+  # runtime with CUDA_ERROR_UNSUPPORTED_PTX_VERSION (222) on 12.8 nodes. Matches
+  # the validated cry-loch-babel endpoint environment.
+  - cuda-version=12.8
   # Required for Loch/PyCUDA runtime kernel compilation in SOMD2 GCMC.
   - cuda-nvvm
   - ambertools

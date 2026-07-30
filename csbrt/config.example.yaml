@@ -1,0 +1,24 @@
+output_dir: csbrt-run
+# --- preprocess ---
+receptor:      ../protein_prep/inputs/recfinal_7dli_water.pdb
+template_cif:  ../protein_prep/inputs/7dli.cif
+receptor_chain: B
+template_chain: B
+ligand_sdf:    ../protein_prep/inputs/cry1_ligands.sdf
+ligand_name:   7dli
+loop:
+  after_resid: 395
+  sequence:    FFQQFF
+use_msa_server: false      # true -> fetch MSAs from the ColabFold server
+ph: 7.4
+runner_yaml: runner_turing.yml   # Turing (2080 Ti) only; unset on Ampere+
+diffusion_samples: 1
+model_seeds: 1
+# --- endpoint (equilibrate / gcmc) ---
+seed: 20260714
+profile: full             # 'smoke' for plumbing tests
+# --- fep ---
+edges: fep_edges/edges.tsv
+# --- analysis ---
+rowan_edges:  # optional benchmark CSV
+experimental: # optional per-compound experimental dG CSV

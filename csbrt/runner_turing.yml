@@ -1,0 +1,11 @@
+# RTX 2080 Ti (Turing, SM 7.5) cannot compile OpenFold3's Triton triangle
+# kernels: "LLVM ERROR: Unsupported rounding mode for conversion" from
+# ConvertTritonGPUToLLVM. Fall back to the non-Triton attention path.
+model_update:
+  presets:
+    - predict
+  custom:
+    settings:
+      memory:
+        eval:
+          use_triton_triangle_kernels: false
