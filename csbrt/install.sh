@@ -26,8 +26,7 @@ PY="$HOME/miniforge3/envs/$ENV/bin/python"
 # then fails mid-GCMC with `libc10.so: cannot open shared object file`.
 echo "== 2/3 CUDA torch + OpenFold3 + protonation + diagnostics (pip) =="
 "$PY" -m pip install --no-input --index-url https://download.pytorch.org/whl/cu126 'torch==2.7.1'
-"$PY" -m pip install --no-input openfold3 pdb2pqr==3.7.1 propka==3.5.1 \
-    git+https://github.com/MobleyLab/slow-rotations.git
+"$PY" -m pip install --no-input openfold3 pdb2pqr==3.7.1 propka==3.5.1
 
 echo "== 3/3 the csbrt package itself =="
 "$PY" -m pip install --no-input "$HERE"

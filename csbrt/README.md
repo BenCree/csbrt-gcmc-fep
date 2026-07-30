@@ -13,7 +13,7 @@ preprocess  →  equilibrate  →  gcmc  →  fep  →  analysis
 | `equilibrate` | AM1-BCC/GAFF2 + ff14SB/TIP3P preparation, Loch UVT1 → NPT → UVT2 | AmberTools, Loch, Sire/OpenMM |
 | `gcmc` | Loch MD/GCMC production + hydration-site density analysis | Loch, MDTraj |
 | `fep` | pick equilibrated bound frames, resolve reviewed edges, run SOMD2 RBFE | BioSimSpace, SOMD2 |
-| `analysis` | network fit, benchmark/experiment comparison, sampling diagnostics | numpy, slow-rotations |
+| `analysis` | network fit, benchmark/experiment comparison, sampling diagnostics | numpy, mdtraj, rdkit, pymbar |
 
 The whole thing runs in **one conda environment**. There is no per-stage
 interpreter indirection.
@@ -43,8 +43,7 @@ mamba activate csbrt
 # toolchain used by OpenMM/loch untouched)
 pip install --index-url https://download.pytorch.org/whl/cu126 torch==2.7.1
 pip install openfold3 pdb2pqr==3.7.1 propka==3.5.1 \
-            git+https://github.com/MobleyLab/slow-rotations.git
-pip install .                # the csbrt CLI
+            pip install .                # the csbrt CLI
 ```
 
 ## Commands
@@ -106,7 +105,7 @@ python -c "
 import numpy, torch, somd2, sire, loch, openfold3, openmm
 print('numpy', numpy.__version__, '| torch cuda', torch.cuda.is_available())
 print('sire', sire.__version__, 'loch', loch.__version__, 'somd2', somd2.__version__)"
-src/csbrt/preflight_fep.sh          # OpenMM CUDA context + a real short SOMD2 leg
+scripts/preflight_fep.sh          # OpenMM CUDA context + a real short SOMD2 leg
 ```
 
 ## Run
@@ -125,8 +124,8 @@ The endpoint series and the FEP network are embarrassingly parallel and ship wit
 SLURM submitters:
 
 ```bash
-./src/csbrt/submit_ev71_density_series.sh --dataset dataset.tsv --run-root runs/ --replicates 6
-./src/csbrt/submit_fep_edges.sh --manifest fep_manifest.tsv --batch 20 --run-root runs/fep-runs \
+./scripts/submit_ev71_density_series.sh --dataset dataset.tsv --run-root runs/ --replicates 6
+./scripts/submit_fep_edges.sh --manifest fep_manifest.tsv --batch 20 --run-root runs/fep-runs \
     --rowan-edges <benchmark>.csv --experimental <affinities>.csv
 ```
 
@@ -157,6 +156,7 @@ trusting downstream results.
   edges inconsistent with the rest of the network. This and overlap are *internal*
   criteria, so filtering on them is legitimate; filtering on disagreement with a
   reference benchmark is circular.
-- **Torsional sampling** (`slow-rotations`): an edge can have healthy overlap and
+- **Torsional sampling** (`csbrt.torsion_diagnostics`, run automatically by the
+  `analysis` stage): an edge can have healthy overlap and
   still be wrong if a ligand torsion never transitions. The tool counts dihedral
   state transitions and flags those with fewer than ~10.

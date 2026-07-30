@@ -193,8 +193,26 @@ def stage_analysis(cfg: dict, out: Path, dry: bool) -> None:
         if cfg.get("experimental"):
             cmd += ["--experimental", cfg["experimental"]]
         run(cmd, dry=dry)
-    print("\nFor torsional-sampling diagnostics on suspect edges use the "
-          "slow-rotations package, installed in this environment.")
+
+    # Torsional sampling. An edge can have healthy window overlap and still be
+    # wrong if a rotatable bond never crossed its barrier, so this runs as part
+    # of the stage rather than being left as a suggestion in the output.
+    ligands = ligand_library(cfg, out, "analysis")
+    for edge_dir in sorted(p for p in fep_root.glob("*") if p.is_dir()):
+        if edge_dir.name == "network_analysis":
+            continue
+        for leg in ("free", "bound"):
+            topology = edge_dir / leg / "system0.prm7"
+            trajectories = sorted((edge_dir / leg).glob("traj_*.dcd"))
+            if not topology.is_file() or not trajectories:
+                continue
+            run(script("torsion_diagnostics.py") + [
+                "--topology", topology,
+                "--trajectory", trajectories[0],
+                "--ligand-sdf", ligands,
+                "--ligand-resname", cfg.get("ligand_resname", "LIG"),
+                "--output", edge_dir / f"torsion_diagnostics_{leg}.json",
+            ], dry=dry)
 
 
 RUNNERS = {
