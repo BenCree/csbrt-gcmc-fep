@@ -187,20 +187,53 @@ def make_sampler(
     ghost_file: Path,
     ligand_resname: str = "LIG",
     platform: str = "cuda",
+    reference: str | None = None,
+    radius: str = SPHERE_RADIUS,
+    excess_chemical_potential: str = MU_EX,
+    standard_volume: str = STANDARD_VOLUME,
+    num_ghost_waters: int = NUM_GHOSTS,
+    adams_shift: float = 0.0,
+    bulk_sampling_probability: float = 0.0,
 ):
+    """Build a Loch sampler.
+
+    Every keyword defaults to the fixed Ludovic value, so callers that omit them
+    are unaffected. They are exposed because Grand Canonical Integration needs a
+    per-window chemical potential and a sphere anchored on a dummy atom rather
+    than on the ligand.
+    """
+    if reference is None:
+        reference = f"resname {ligand_resname}"
+    # Loch validates these only after cloning the whole system, and its
+    # **kwargs silently swallows unrecognised keywords (so a mistyped
+    # sphere_centre= would be accepted and ignored). Check here, where the
+    # failure is cheap and attributable.
+    if not isinstance(reference, str) or not reference.strip():
+        raise ValueError("'reference' must be a non-empty Sire selection string")
+    if not isinstance(num_ghost_waters, int) or num_ghost_waters < 1:
+        raise ValueError("'num_ghost_waters' must be a positive integer")
+    if attempts < batch_size:
+        raise ValueError(
+            f"'attempts' ({attempts}) must be greater than or equal to "
+            f"'batch_size' ({batch_size}); Loch evaluates one batch of trials at "
+            "a time and cannot exceed the attempt budget"
+        )
+    if not 0.0 <= float(bulk_sampling_probability) <= 1.0:
+        raise ValueError("'bulk_sampling_probability' must be between 0 and 1")
     kwargs = dict(
         system=system,
-        reference=f"resname {ligand_resname}",
-        radius=SPHERE_RADIUS,
+        reference=reference,
+        radius=radius,
         cutoff_type="pme",
         cutoff=CUTOFF,
-        excess_chemical_potential=MU_EX,
-        standard_volume=STANDARD_VOLUME,
+        excess_chemical_potential=excess_chemical_potential,
+        standard_volume=standard_volume,
         temperature=TEMPERATURE,
-        num_ghost_waters=NUM_GHOSTS,
+        num_ghost_waters=num_ghost_waters,
         batch_size=batch_size,
         num_attempts=attempts,
-        bulk_sampling_probability=0.0,
+        adams_shift=float(adams_shift),
+        bulk_sampling_probability=float(bulk_sampling_probability),
         platform=platform,
         seed=seed,
         log_file=str(log_file),
@@ -445,11 +478,16 @@ def validate_gcmc_handoff(
     *,
     input_water_count: int,
     label: str,
+    num_ghost_waters: int = NUM_GHOSTS,
 ) -> dict[str, int]:
-    """Cross-check a finalized handoff against the sampler's logical state."""
+    """Cross-check a finalized handoff against the sampler's logical state.
+
+    ``num_ghost_waters`` must match the buffer the sampler was built with;
+    the water arithmetic is silently wrong otherwise.
+    """
     state = list(sampler.water_state())
     state_zero = sum(int(value == 0) for value in state)
-    expected = input_water_count + NUM_GHOSTS - state_zero
+    expected = input_water_count + num_ghost_waters - state_zero
     audit = validate_physical_water_topology(
         system,
         expected_water_count=expected,
@@ -457,7 +495,7 @@ def validate_gcmc_handoff(
     )
     return {
         "input_physical_waters": int(input_water_count),
-        "buffer_waters": NUM_GHOSTS,
+        "buffer_waters": int(num_ghost_waters),
         "final_state_zero_waters": state_zero,
         "expected_physical_waters": expected,
         "saved_physical_waters": int(audit["water_molecules"]),
@@ -465,12 +503,46 @@ def validate_gcmc_handoff(
     }
 
 
+def with_extension(prefix: Path, extension: str) -> Path:
+    """Return ``prefix`` with ``extension`` appended.
+
+    ``Path.with_suffix`` replaces everything after the last dot in the basename,
+    so a prefix containing a decimal or a dotted identifier would be truncated
+    and two different stages could collide on one filename. Appending is always
+    what is meant here, because the prefix is a caller-supplied name and not a
+    filename with a suffix to replace.
+    """
+    return prefix.with_name(f"{prefix.name}.{extension.lstrip('.')}")
+
+
+def validate_output_prefix(prefix: Path) -> Path:
+    """Reject a prefix Sire cannot write to.
+
+    Sire chooses the output format from the file extension and refuses any
+    basename containing another dot, so a prefix such as ``run_mu-8.45`` fails
+    deep inside the writer with "Cannot find parsers that support the following
+    format". Catching it here makes the cause obvious.
+    """
+    name = prefix.name
+    if not name:
+        raise ValueError("Output prefix must not be empty")
+    if "." in name:
+        raise ValueError(
+            f"Output prefix {name!r} contains a '.', which Sire cannot write: it "
+            "infers the file format from the extension and rejects any further dot "
+            "in the basename. Use a dot-free prefix (put varying values such as a "
+            "chemical potential in the directory name instead)."
+        )
+    return prefix
+
+
 def save_system(system, prefix: Path) -> dict[str, str]:
+    validate_output_prefix(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
     paths = {
-        "prmtop": str(prefix.with_suffix(".prmtop")),
-        "rst7": str(prefix.with_suffix(".rst7")),
-        "pdb": str(prefix.with_suffix(".pdb")),
+        "prmtop": str(with_extension(prefix, "prmtop")),
+        "rst7": str(with_extension(prefix, "rst7")),
+        "pdb": str(with_extension(prefix, "pdb")),
     }
     for path in paths.values():
         sr.save(system, path, parallel=False, save_velocities=False)
