@@ -19,6 +19,7 @@ dependencies = ["pyyaml", "numpy"]
 [project.scripts]
 csbrt             = "csbrt.cli:main"
 csbrt-preprocess  = "csbrt.cli:preprocess"
+csbrt-dock        = "csbrt.cli:dock"
 csbrt-equilibrate = "csbrt.cli:equilibrate"
 csbrt-gcmc        = "csbrt.cli:gcmc"
 csbrt-fep         = "csbrt.cli:fep"

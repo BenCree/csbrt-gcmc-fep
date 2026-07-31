@@ -1,0 +1,25 @@
+# Workflow-driver environment for the pose-exploration stage.
+#
+# Deliberately separate from the `csbrt` env. Snakemake and its Slurm plugin pull a
+# dependency tree of their own, and csbrt pins cuda-version=12.8 for sire/somd2/loch --
+# preflight_fep.sh enforces that ceiling. Keeping the driver out of that env means the
+# workflow cannot perturb the simulation stack.
+#
+#   mamba env create -f csbrt/workflow/environment-wf.yml
+#   mamba activate csbrt-wf
+#
+# Then point `python:` in config.yaml at the csbrt env's interpreter, e.g.
+#   python: /home/moshe/miniforge3/envs/csbrt/bin/python
+#
+# GNINA is NOT here: it is not packaged on conda-forge or bioconda. Download the static
+# binary from https://github.com/gnina/gnina/releases and set `gnina_binary` in
+# config.yaml.
+name: csbrt-wf
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - snakemake>=8
+  - snakemake-executor-plugin-slurm
+  - pyyaml

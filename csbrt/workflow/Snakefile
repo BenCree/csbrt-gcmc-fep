@@ -1,0 +1,239 @@
+# Pose exploration: dock -> GCMC -> re-dock into the hydrated site -> screen -> select.
+#
+# Terminal target is the selected edge list. This workflow deliberately STOPS before FEP:
+# its job is to decide which edges are worth running, not to run them.
+#
+#   snakemake -s csbrt/workflow/Snakefile --configfile csbrt/workflow/config.yaml -j 4
+#   snakemake ... --profile csbrt/workflow/profiles/slurm      # one GPU per pose
+#
+# The fan-out is `gcmc_pose`: one job per (ligand, pose), each asking for one GPU. That is
+# what spreads the expensive stage across GPUs; Snakemake handles the scheduling instead of
+# the hand-rolled Slurm array arithmetic used elsewhere in this repo.
+
+from pathlib import Path
+
+# `configfile:` resolves against the working directory, not the Snakefile, so a bare
+# "config.yaml" breaks the moment --directory points elsewhere. Fall back to the copy
+# beside this file, and skip it entirely when everything came in via --config.
+if not config:
+    configfile: str(Path(workflow.basedir) / "config.yaml")
+
+SRC = Path(config["csbrt_src"]).resolve()
+RUN_ROOT = Path(config["run_root"]).resolve()
+RECEPTOR = Path(config["receptor"]).resolve()
+LIGAND_LIBRARY = Path(config["ligand_library"]).resolve()
+
+LIGANDS = config["ligand_ids"]
+ROUND1_N = int(config.get("top_n_round1", 5))
+ROUND2_N = int(config.get("top_n_round2", 3))
+PROFILE = config.get("profile", "full")
+SEED = int(config.get("seed", 20260714))
+GNINA = config.get("gnina_binary", "gnina")
+PYTHON = config.get("python", "python")
+
+# Pose ids are dot-free and match extract_ligands.py's SAFE_NAME, because every pose
+# becomes its own endpoint with its own run directory.
+ROUND1_POSES = [f"p{i:02d}" for i in range(1, ROUND1_N + 1)]
+ROUND2_POSES = [f"p{i:02d}" for i in range(1, ROUND2_N + 1)]
+
+# Endpoints carried into the edge screen: the round-two poses, one per (ligand, r1, r2).
+ENDPOINTS = [
+    f"{ligand}_{r1}_{r2}"
+    for ligand in LIGANDS for r1 in ROUND1_POSES for r2 in ROUND2_POSES
+]
+
+
+rule all:
+    input:
+        RUN_ROOT / "edges" / "selected_edges.tsv",
+        RUN_ROOT / "edges" / "selected_edges.ledger.json",
+
+
+rule extract_ligand:
+    """Pull one named record out of the library as its own single-record SDF."""
+    input:
+        library=LIGAND_LIBRARY,
+    output:
+        sdf=RUN_ROOT / "inputs" / "{ligand}" / "{ligand}.sdf",
+    params:
+        script=SRC / "extract_ligands.py",
+        outdir=lambda w: RUN_ROOT / "inputs" / w.ligand,
+    shell:
+        "{PYTHON} {params.script} --input {input.library} "
+        "--output-dir {params.outdir} --ligand-id {wildcards.ligand} --overwrite"
+
+
+rule dock_round1:
+    """Scramble the crystal pose, then re-dock it into the dry receptor."""
+    input:
+        ligand=rules.extract_ligand.output.sdf,
+        receptor=RECEPTOR,
+    output:
+        poses=expand(
+            str(RUN_ROOT / "dock1" / "{{ligand}}" / "poses" / "{{ligand}}_{pose}.sdf"),
+            pose=ROUND1_POSES,
+        ),
+        report=RUN_ROOT / "dock1" / "{ligand}" / "docking_report.json",
+    params:
+        script=SRC / "dock_poses.py",
+        outdir=lambda w: RUN_ROOT / "dock1" / w.ligand,
+        radius=config.get("scramble_radius", 5.0),
+        exhaustiveness=config.get("exhaustiveness", 16),
+        num_modes=config.get("num_modes", 20),
+    shell:
+        "{PYTHON} {params.script} --receptor {input.receptor} --ligand {input.ligand} "
+        "--ligand-id {wildcards.ligand} --output-dir {params.outdir} "
+        "--top-n {ROUND1_N} --seed {SEED} --scramble-radius {params.radius} "
+        "--exhaustiveness {params.exhaustiveness} --num-modes {params.num_modes} "
+        "--gnina-binary {GNINA}"
+
+
+rule gcmc_pose:
+    """Loch GCMC on one docked pose. This is the GPU fan-out point."""
+    input:
+        pose=RUN_ROOT / "dock1" / "{ligand}" / "poses" / "{ligand}_{pose}.sdf",
+        receptor=RECEPTOR,
+    output:
+        prmtop=RUN_ROOT / "gcmc" / "{ligand}_{pose}" / "rep1" / "production"
+               / "{ligand}_{pose}-production-final.prmtop",
+        rst7=RUN_ROOT / "gcmc" / "{ligand}_{pose}" / "rep1" / "production"
+             / "{ligand}_{pose}-production-final.rst7",
+    params:
+        script=SRC / "run_ev71_pipeline.py",
+        rundir=lambda w: RUN_ROOT / "gcmc" / f"{w.ligand}_{w.pose}" / "rep1",
+    resources:
+        gpu=1,
+    shell:
+        # --through production: postprocessing clustering is not needed here, the
+        # hydration sites come from ev71_density_sites.py in the next rule.
+        "{PYTHON} {params.script} --receptor {input.receptor} "
+        "--ligand-library {input.pose} --ligand-id {wildcards.ligand}_{wildcards.pose} "
+        "--run-dir {params.rundir} --prefix {wildcards.ligand}_{wildcards.pose} "
+        "--seed {SEED} --profile {PROFILE} --through production"
+
+
+rule density_sites:
+    """Hydration sites for this pose, in the shared alignment frame."""
+    input:
+        prmtop=rules.gcmc_pose.output.prmtop,
+        rst7=rules.gcmc_pose.output.rst7,
+    output:
+        metrics=RUN_ROOT / "gcmc" / "{ligand}_{pose}" / "rep1" / "density_analysis"
+                / "{ligand}_{pose}-site-metrics.csv",
+    params:
+        script=SRC / "ev71_density_sites.py",
+        rundir=lambda w: RUN_ROOT / "gcmc" / f"{w.ligand}_{w.pose}" / "rep1",
+        outdir=lambda w: (RUN_ROOT / "gcmc" / f"{w.ligand}_{w.pose}" / "rep1"
+                          / "density_analysis"),
+    resources:
+        gpu=0,
+    shell:
+        "{PYTHON} {params.script} "
+        "--topology {params.rundir}/production/{wildcards.ligand}_{wildcards.pose}-loch-ghosts.pdb "
+        "--trajectory {params.rundir}/production/{wildcards.ligand}_{wildcards.pose}-raw.dcd "
+        "--ghost-file {params.rundir}/production/{wildcards.ligand}_{wildcards.pose}-gcmc-ghosts.txt "
+        "--output-dir {params.outdir} --prefix {wildcards.ligand}_{wildcards.pose} "
+        "--alignment-reference {params.rundir}/preparation/receptor_input.pdb"
+
+
+rule hydrated_receptor:
+    """Strip the ligand, keep the GCMC waters: the receptor round two docks into."""
+    input:
+        prmtop=rules.gcmc_pose.output.prmtop,
+        rst7=rules.gcmc_pose.output.rst7,
+        metrics=rules.density_sites.output.metrics,
+    output:
+        pdb=RUN_ROOT / "dock2" / "{ligand}_{pose}" / "hydrated_receptor.pdb",
+    params:
+        script=SRC / "build_docking_receptor.py",
+        rundir=lambda w: RUN_ROOT / "gcmc" / f"{w.ligand}_{w.pose}" / "rep1",
+        radius=config.get("water_radius", 12.0),
+        occupancy=config.get("minimum_water_occupancy", 0.5),
+    shell:
+        # Site coordinates live in the alignment frame, so the reference is mandatory.
+        "{PYTHON} {params.script} --prmtop {input.prmtop} --rst7 {input.rst7} "
+        "--output {output.pdb} --water-radius {params.radius} "
+        "--site-metrics {input.metrics} --minimum-occupancy {params.occupancy} "
+        "--alignment-reference {params.rundir}/preparation/receptor_input.pdb"
+
+
+rule dock_round2:
+    """Re-dock into the hydrated site. No scramble: this input is already independent."""
+    input:
+        receptor=rules.hydrated_receptor.output.pdb,
+        ligand=RUN_ROOT / "dock1" / "{ligand}" / "poses" / "{ligand}_{pose}.sdf",
+    output:
+        poses=expand(
+            str(RUN_ROOT / "dock2" / "{{ligand}}_{{pose}}" / "poses"
+                / "{{ligand}}_{{pose}}_{pose2}.sdf"),
+            pose2=ROUND2_POSES,
+        ),
+    params:
+        script=SRC / "dock_poses.py",
+        outdir=lambda w: RUN_ROOT / "dock2" / f"{w.ligand}_{w.pose}",
+        exhaustiveness=config.get("exhaustiveness", 16),
+        num_modes=config.get("num_modes", 20),
+    shell:
+        "{PYTHON} {params.script} --receptor {input.receptor} --ligand {input.ligand} "
+        "--ligand-id {wildcards.ligand}_{wildcards.pose} --output-dir {params.outdir} "
+        "--top-n {ROUND2_N} --seed {SEED} --no-scramble "
+        "--exhaustiveness {params.exhaustiveness} --num-modes {params.num_modes} "
+        "--gnina-binary {GNINA}"
+
+
+rule endpoint_preparation:
+    """Parameterise one round-two pose so the edge screen has a topology to map."""
+    input:
+        pose=RUN_ROOT / "dock2" / "{ligand}_{pose}" / "poses"
+             / "{ligand}_{pose}_{pose2}.sdf",
+        receptor=RECEPTOR,
+    output:
+        marker=RUN_ROOT / "endpoints" / "{ligand}_{pose}_{pose2}" / "rep1"
+               / "preparation" / "preparation.complete.json",
+    params:
+        script=SRC / "prepare_ev71_system.py",
+        outdir=lambda w: (RUN_ROOT / "endpoints"
+                          / f"{w.ligand}_{w.pose}_{w.pose2}" / "rep1" / "preparation"),
+    shell:
+        "{PYTHON} {params.script} --receptor {input.receptor} --ligand {input.pose} "
+        "--output-dir {params.outdir} "
+        "--prefix {wildcards.ligand}_{wildcards.pose}_{wildcards.pose2}"
+
+
+rule screen_edges:
+    """Which pose pairs could legitimately be an FEP edge. No GPU."""
+    input:
+        markers=expand(
+            str(RUN_ROOT / "endpoints" / "{endpoint}" / "rep1" / "preparation"
+                / "preparation.complete.json"),
+            endpoint=ENDPOINTS,
+        ),
+    output:
+        tsv=RUN_ROOT / "edges" / "allowable_edges.tsv",
+    params:
+        script=SRC / "screen_fep_edges.py",
+        root=RUN_ROOT / "endpoints",
+        minimum=config.get("minimum_mapped_heavy_fraction", 0.50),
+    shell:
+        "{PYTHON} {params.script} --endpoint-run-root {params.root} --replica 1 "
+        "--output {output.tsv} --minimum-mapped-heavy-fraction {params.minimum}"
+
+
+rule select_edges:
+    """Pick the subset worth running, then stop. This is the terminal rule."""
+    input:
+        tsv=rules.screen_edges.output.tsv,
+    output:
+        tsv=RUN_ROOT / "edges" / "selected_edges.tsv",
+        ledger=RUN_ROOT / "edges" / "selected_edges.ledger.json",
+    params:
+        script=SRC / "select_fep_edges.py",
+        selection=config.get("edge_selection", "a-optimal"),
+        gain=config.get("min_relative_gain", 0.02),
+        extra=lambda w: (
+            f"--max-edges {config['max_edges']}" if config.get("max_edges") else ""
+        ),
+    shell:
+        "{PYTHON} {params.script} --edges {input.tsv} --output {output.tsv} "
+        "--ledger {output.ledger} --selection {params.selection} "
+        "--min-relative-gain {params.gain} {params.extra}"

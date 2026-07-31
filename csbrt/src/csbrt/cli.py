@@ -27,7 +27,8 @@ import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-STAGES = ("preprocess", "equilibrate", "gcmc", "fep", "analysis")
+STAGES = ("preprocess", "dock", "equilibrate", "gcmc", "fep", "analysis")
+WORKFLOW = HERE.parents[1] / "workflow"
 
 
 # --------------------------------------------------------------------------- helpers
@@ -226,8 +227,68 @@ def stage_analysis(cfg: dict, out: Path, dry: bool) -> None:
             ], dry=dry)
 
 
+def stage_dock(cfg: dict, out: Path, dry: bool) -> None:
+    """Pose exploration: dock -> GCMC -> re-dock hydrated -> screen -> select edges.
+
+    Optional and off unless the config carries a `dock:` block. It only earns its cost
+    when the docked pose is untrusted and you need to know which ligands can legitimately
+    share an FEP network; a benchmark set with one receptor and known crystal poses does
+    not need it.
+
+    Terminal output is a selected edge list, deliberately stopping before FEP -- the
+    point is to decide what is worth running. Feed `selected_edges.tsv` to
+    make_fep_manifest.py when you want to run it.
+    """
+    dock = cfg.get("dock")
+    if not dock or dock.get("enabled") is False:
+        print("csbrt: dock stage not configured (no 'dock:' block); skipping")
+        return
+
+    snakefile = Path(dock.get("snakefile", WORKFLOW / "Snakefile"))
+    if not snakefile.is_file():
+        raise SystemExit(f"Workflow not found at {snakefile}")
+    run_root = Path(dock.get("run_root", out / "pose-exploration"))
+
+    # The workflow driver lives in its own env (see workflow/environment-wf.yml): the
+    # csbrt env pins cuda-version=12.8 for sire/somd2/loch and snakemake must not
+    # perturb that. Stage scripts still run under this interpreter.
+    snakemake = dock.get("snakemake", "snakemake")
+    cmd = [
+        snakemake, "-s", snakefile,
+        "--directory", run_root.parent,
+        "--config",
+        f"csbrt_src={HERE}",
+        f"run_root={run_root}",
+        f"receptor={need(cfg, 'receptor', 'dock')}",
+        f"ligand_library={ligand_library(cfg, out, 'dock')}",
+        f"python={sys.executable}",
+    ]
+    for key in (
+        "gnina_binary", "top_n_round1", "top_n_round2", "scramble_radius",
+        "exhaustiveness", "num_modes", "profile", "seed", "water_radius",
+        "minimum_water_occupancy", "minimum_mapped_heavy_fraction",
+        "edge_selection", "min_relative_gain", "max_edges",
+    ):
+        if key in dock:
+            cmd.append(f"{key}={dock[key]}")
+    if "ligand_ids" in dock:
+        cmd.append("ligand_ids=" + json.dumps(list(dock["ligand_ids"])))
+    cmd += ["--jobs", str(dock.get("jobs", 4))]
+    if dock.get("profile_dir"):
+        cmd += ["--profile", dock["profile_dir"]]
+    if dry:
+        # Hand the dry run to Snakemake rather than skipping the call, so the user sees
+        # the real DAG instead of just the command that would have produced it.
+        cmd.append("--dry-run")
+    run(cmd, dry=False)
+    selected = run_root / "edges" / "selected_edges.tsv"
+    if selected.is_file():
+        print(f"\ncsbrt: compatible FEP edges written to {selected}")
+
+
 RUNNERS = {
     "preprocess": stage_preprocess,
+    "dock": stage_dock,
     "equilibrate": stage_equilibrate,
     "gcmc": stage_gcmc,
     "fep": stage_fep,
@@ -261,6 +322,7 @@ def _single_stage(stage: str):
 
 
 preprocess = _single_stage("preprocess")
+dock = _single_stage("dock")
 equilibrate = _single_stage("equilibrate")
 gcmc = _single_stage("gcmc")
 fep = _single_stage("fep")

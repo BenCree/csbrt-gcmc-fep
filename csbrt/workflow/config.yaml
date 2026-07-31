@@ -1,0 +1,44 @@
+# Pose-exploration workflow configuration.
+#
+# This whole stage is optional. It matters when you do not trust the docked pose and
+# want to know which ligands can legitimately share an FEP network; for a benchmark set
+# with one shared receptor and known crystal poses it is unnecessary.
+
+# --- paths -------------------------------------------------------------------------
+csbrt_src: ../src/csbrt
+run_root: pose-exploration
+receptor: ../../openbind_ev71_2a_pyrrolidine_benchmark_release/receptor/ev71_2a_x7339a_template_prepared.pdb
+ligand_library: ../../openbind_ev71_2a_pyrrolidine_benchmark_release/ligands/pyrrolidine_32_xtal_poses.sdf
+
+# Interpreter used for every stage script. Point this at the csbrt env's python.
+python: python
+
+# GNINA is not installable from conda-forge. Download the static binary from the gnina
+# releases page and either put it on PATH or give the absolute path here.
+gnina_binary: gnina
+
+# --- which ligands -----------------------------------------------------------------
+# SDF record titles. Every one becomes ROUND1 x ROUND2 endpoints, so the endpoint count
+# grows fast: 4 ligands x 5 x 3 = 60 endpoints and 1770 candidate pairs.
+ligand_ids:
+  - x7024a
+  - x7026a
+
+# --- docking -----------------------------------------------------------------------
+top_n_round1: 5          # poses kept from the dry-receptor round
+top_n_round2: 3          # poses kept per round-one pose, after GCMC hydration
+scramble_radius: 5.0     # max random translation, Angstrom
+exhaustiveness: 16
+num_modes: 20            # must be >= top_n_round1
+
+# --- GCMC --------------------------------------------------------------------------
+profile: full            # 'smoke' for plumbing checks only; it is NOT science
+seed: 20260714
+water_radius: 12.0             # keep waters within this of the ligand centroid
+minimum_water_occupancy: 0.5   # hydration-site occupancy threshold
+
+# --- edge screening and selection --------------------------------------------------
+minimum_mapped_heavy_fraction: 0.50   # same gate prepare_fep.py applies
+edge_selection: a-optimal             # a-optimal | spanning-tree | all
+min_relative_gain: 0.02               # stop adding edges below this variance gain
+# max_edges: 40                       # optional hard cap

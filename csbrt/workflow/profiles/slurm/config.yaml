@@ -1,0 +1,50 @@
+# Snakemake Slurm profile for the pose-exploration workflow.
+#
+#   snakemake -s csbrt/workflow/Snakefile --profile csbrt/workflow/profiles/slurm
+#
+# Requires snakemake>=8 and snakemake-executor-plugin-slurm (see environment-wf.yml).
+# `gpu` is a Snakemake resource, so jobs_per_gpu is enforced globally rather than per
+# rule -- this is what replaces the hand-rolled `--array 0-(N-1)%B` throttling used by
+# submit_fep_edges.sh.
+
+executor: slurm
+jobs: 64
+latency-wait: 60
+rerun-incomplete: true
+printshellcmds: true
+keep-going: true
+
+# Cap concurrent GPU jobs. Match this to the GPUs you actually have.
+resources:
+  - gpu=6
+
+default-resources:
+  - slurm_partition=gpu
+  - runtime=4320          # minutes (72 h), matching fep_edge.slurm
+  - mem_mb=32000
+  - cpus_per_task=8
+
+set-resources:
+  # The GCMC stage is the long one: full profile is 2 ns NPT + 5 ns production.
+  gcmc_pose:
+    - slurm_extra="--gres=gpu:1"
+    - runtime=4320
+    - mem_mb=96000
+    - cpus_per_task=16
+  # Density analysis is CPU-bound clustering over the trajectory.
+  density_sites:
+    - runtime=240
+    - mem_mb=32000
+  # Docking is short; GNINA CNN rescoring wants a GPU but not for long.
+  dock_round1:
+    - slurm_extra="--gres=gpu:1"
+    - runtime=120
+    - mem_mb=16000
+  dock_round2:
+    - slurm_extra="--gres=gpu:1"
+    - runtime=120
+    - mem_mb=16000
+  # BioSimSpace atom mapping over every pair; scales with endpoint count squared.
+  screen_edges:
+    - runtime=480
+    - mem_mb=16000

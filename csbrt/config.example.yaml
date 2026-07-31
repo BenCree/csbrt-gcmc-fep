@@ -22,3 +22,26 @@ edges: fep_edges/edges.tsv
 # --- analysis ---
 rowan_edges:  # optional benchmark CSV
 experimental: # optional per-compound experimental dG CSV
+
+# --- dock (OPTIONAL pose exploration) ---
+# Omit this block entirely and the dock stage is skipped, leaving the pipeline exactly
+# as it was. Enable it when the docked pose is untrusted and you need to know which
+# ligands can legitimately share an FEP network. It runs
+#   scramble -> GNINA -> GCMC -> re-dock hydrated -> screen -> select
+# and STOPS with a list of compatible edges; it does not run FEP.
+#
+# GNINA is not installable from conda-forge. Download the static binary from
+# https://github.com/gnina/gnina/releases and put it on PATH or give the path below.
+# The Snakemake driver lives in its own env: mamba env create -f workflow/environment-wf.yml
+#
+# dock:
+#   gnina_binary: /path/to/gnina
+#   ligand_ids: [x7024a, x7026a]
+#   top_n_round1: 5            # poses kept from the dry-receptor round
+#   top_n_round2: 3            # poses kept per round-one pose, after hydration
+#   scramble_radius: 5.0       # Angstrom; verified non-trivial or the run aborts
+#   profile: full              # 'smoke' is plumbing only, not science
+#   edge_selection: a-optimal  # a-optimal | spanning-tree | all
+#   min_relative_gain: 0.02    # stop adding edges below this variance gain
+#   jobs: 4
+#   profile_dir: workflow/profiles/slurm   # one GPU per pose on a cluster
