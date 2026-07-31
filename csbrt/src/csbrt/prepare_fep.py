@@ -193,19 +193,11 @@ def main() -> None:
 
     ligand_a = ligand_from_preparation(state_a)
     ligand_b = ligand_from_preparation(state_b)
-    if opt.align_to_bound_pose:
-        # Reposition the state-A ligand onto the ligand pose already present in the
-        # (water-equilibrated) bound frame, so the merged perturbable molecule is
-        # built in the equilibrated pocket instead of the preparation pose.
-        frame_system = BSS.IO.readMolecules([str(bound_topology), str(bound_coordinates)])
-        frame_ligand = frame_system.getMolecule(ligand_index(frame_system))
-        if frame_ligand.nAtoms() != ligand_a.nAtoms():
-            raise ValueError(
-                "Bound-frame ligand atom count differs from the state-A ligand; "
-                "cannot align to the bound pose"
-            )
-        identity = {index: index for index in range(ligand_a.nAtoms())}
-        ligand_a = BSS.Align.rmsdAlign(ligand_a, frame_ligand, identity)
+    # NB: the alignment onto the bound frame deliberately happens *after* the free-leg
+    # merge below. The ligand parameterisation files (ligand.prmtop/rst7, ligand.mol2)
+    # sit in the ligand input frame, ~29 A from the receptor frame, and tLEaP solvates
+    # the free leg around that same mol2. Aligning here would move the single merged
+    # molecule into the receptor frame and drop it outside the free leg's water cavity.
     if sig_a.get("ligand_sha256") == sig_b.get("ligand_sha256"):
         if ligand_a.nAtoms() != ligand_b.nAtoms():
             raise ValueError("Identical ligand inputs produced different atom counts")
@@ -236,16 +228,44 @@ def main() -> None:
             f"minimum is {opt.minimum_mapped_heavy_fraction:.3f}"
         )
     reverse_mapping = {state_b_index: state_a_index for state_a_index, state_b_index in mapping.items()}
+    # Free leg first, in the untouched ligand input frame. This is the frame tLEaP
+    # builds the water box around, so this molecule drops straight into its cavity.
     aligned_b = BSS.Align.rmsdAlign(ligand_b, ligand_a, reverse_mapping)
-    merged = BSS.Align.merge(
+    merged_free = BSS.Align.merge(
         ligand_a,
         aligned_b,
         mapping,
         allow_ring_breaking=opt.allow_ring_breaking,
         allow_ring_size_change=opt.allow_ring_size_change,
     )
-    if not merged.isPerturbable():
+    if not merged_free.isPerturbable():
         raise RuntimeError("Merged ligand is not marked perturbable")
+
+    # Bound leg second: reposition onto the ligand pose already present in the
+    # (water-equilibrated) bound frame, then merge again. Nothing above has been
+    # aligned, so merged_free cannot be contaminated by this.
+    if opt.align_to_bound_pose:
+        frame_system = BSS.IO.readMolecules([str(bound_topology), str(bound_coordinates)])
+        frame_ligand = frame_system.getMolecule(ligand_index(frame_system))
+        if frame_ligand.nAtoms() != ligand_a.nAtoms():
+            raise ValueError(
+                "Bound-frame ligand atom count differs from the state-A ligand; "
+                "cannot align to the bound pose"
+            )
+        identity = {index: index for index in range(ligand_a.nAtoms())}
+        ligand_a_bound = BSS.Align.rmsdAlign(ligand_a, frame_ligand, identity)
+        aligned_b_bound = BSS.Align.rmsdAlign(ligand_b, ligand_a_bound, reverse_mapping)
+        merged = BSS.Align.merge(
+            ligand_a_bound,
+            aligned_b_bound,
+            mapping,
+            allow_ring_breaking=opt.allow_ring_breaking,
+            allow_ring_size_change=opt.allow_ring_size_change,
+        )
+        if not merged.isPerturbable():
+            raise RuntimeError("Bound-leg merged ligand is not marked perturbable")
+    else:
+        merged = merged_free
 
     tleap = shutil.which("tleap")
     if tleap is None:
@@ -283,7 +303,7 @@ def main() -> None:
     bound = BSS.IO.readMolecules([str(bound_topology), str(bound_coordinates)])
     free = BSS.IO.readMolecules([str(free_topology), str(free_coordinates)])
     bound.updateMolecule(ligand_index(bound), merged)
-    free.updateMolecule(ligand_index(free), merged)
+    free.updateMolecule(ligand_index(free), merged_free)
     if bound.nPerturbableMolecules() != 1 or free.nPerturbableMolecules() != 1:
         raise RuntimeError("Each FEP leg must contain exactly one perturbable molecule")
 
