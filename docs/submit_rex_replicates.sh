@@ -50,8 +50,9 @@ TOTAL=$(( EDGES * REPLICATES ))
 echo "manifest    : $MANIFEST"
 echo "edges       : $EDGES"
 echo "replicates  : $REPLICATES"
-echo "batch       : $BATCH  (concurrent array tasks per replicate)"
+echo "batch       : $BATCH  (concurrent array tasks, ONE DEDICATED GPU each)"
 echo "TOTAL TASKS : $TOTAL   (each = prepare + bound leg + free leg + analyse)"
+echo "PEAK GPUS   : $(( BATCH * REPLICATES ))   ($REPLICATES arrays, each throttled to $BATCH)"
 echo
 
 # ---------------------------------------------------------------- config

@@ -39,6 +39,8 @@ Estimated memory usage on device 0 after creating all replicas: 1.92 GB, Availab
 174 MiB/replica was a ~3,000-atom free leg. A solvated protein bound leg is far
 larger, and 11 of them may not fit. If the estimate exceeds the card, reduce
 `num_lambda` or request a bigger GPU — do not just launch 52 edges and hope.
+Note `--batch` is irrelevant here: every array task gets its own GPU, so the
+11-replica footprint is per-task regardless of how many tasks run concurrently.
 
 **If using more than one GPU:** `num_lambda` must be divisible by `num_gpus`
 (`somd2/runner/_repex.py:95` raises otherwise). 11 windows on 2 GPUs fails;
@@ -104,8 +106,10 @@ for REP in 1 2 3; do
 done
 ```
 
-- `--batch 8` throttles array concurrency. Lower it if REX memory is tight,
-  since concurrent tasks share GPUs.
+- `--batch 8` is a Slurm array throttle: up to 8 tasks at once, **each with its
+  own dedicated GPU** (`fep_edge.slurm` requests `--gres=gpu:1` per task).
+  Nothing is shared, so lowering it does NOT reduce REX memory pressure -- that
+  is per-task. It only controls how many GPUs you occupy at once.
 - `--without-gcmc` is correct: bound-leg waters are already placed by the Loch
   endpoint, and the free leg never uses GCMC.
 - Add `--dry-run` first to print the sbatch commands without submitting.
