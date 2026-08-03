@@ -76,6 +76,51 @@ def somd2_failure_hints(output: Path) -> str:
     return "\n".join(seen[-15:])
 
 
+def resume_mode(output: Path, expected_windows: int) -> str | None:
+    """Decide how SOMD2 should treat whatever is already in `output`.
+
+    SOMD2 restarts each lambda window from its own checkpoint file and raises
+    FileNotFoundError for any that is missing, so a *partial* checkpoint set is not
+    resumable -- passing --restart against one kills the entire leg.
+
+    That is not hypothetical. On 2026-07-31 a cancelled array left a single
+    checkpoint_0.00000.npz behind; the resubmit eight seconds later found it, passed
+    --restart, and every window from lambda=0.1 upwards died immediately on a
+    checkpoint that had never been written. Fifty-two tasks burned nine minutes each
+    and produced nothing, with no error naming the cause.
+
+    So --restart requires a checkpoint for every window. An incomplete set is stale
+    state from a killed run: delete it and rebuild. The SOMD2 checkpoint extension is
+    version-dependent (.s3 on older releases, .npz on 2026.1); matching only one would
+    silently fall through and discard completed windows.
+    """
+    checkpoints = [
+        path
+        for pattern in ("checkpoint_*.s3", "checkpoint_*.npz")
+        for path in output.glob(pattern)
+    ]
+    if len(checkpoints) >= expected_windows > 0:
+        return "--restart"
+    if checkpoints:
+        stale = sorted(path.name for path in checkpoints)
+        print(
+            f"[pipeline] {len(checkpoints)} of {expected_windows} checkpoints present "
+            f"in {output}; SOMD2 cannot restart from a partial set, so this leg will be "
+            f"rebuilt. Discarding stale checkpoints: {', '.join(stale[:4])}"
+            f"{' ...' if len(stale) > 4 else ''}",
+            flush=True,
+        )
+        for path in checkpoints:
+            path.unlink()
+        return "--overwrite"
+    if list(output.glob("config*.yaml")):
+        # A prior launch can fail before the first checkpoint (for example at CUDA
+        # kernel compilation). SOMD2 otherwise refuses its own stale config/topology
+        # files, so rebuild only this uncheckpointed attempt.
+        return "--overwrite"
+    return None
+
+
 def main() -> None:
     opt = options()
     stream = require_file(opt.stream)
@@ -166,18 +211,9 @@ def main() -> None:
     # SOMD2 checkpoint extension is version-dependent (.s3 on older releases,
     # .npz on 2026.1). Matching only one silently falls through to --overwrite,
     # which discards every completed lambda window and re-runs the whole leg.
-    checkpoints = [
-        path
-        for pattern in ("checkpoint_*.s3", "checkpoint_*.npz")
-        for path in output.glob(pattern)
-    ]
-    if checkpoints:
-        command.append("--restart")
-    elif list(output.glob("config*.yaml")):
-        # A prior launch can fail before the first checkpoint (for example at
-        # CUDA kernel compilation). SOMD2 otherwise refuses its own stale
-        # config/topology files, so rebuild only this uncheckpointed attempt.
-        command.append("--overwrite")
+    resume_flag = resume_mode(output, expected_windows)
+    if resume_flag:
+        command.append(resume_flag)
     if opt.gcmc_bound:
         command.extend(
             [

@@ -37,6 +37,18 @@ def options() -> argparse.Namespace:
     parser.add_argument("--gcmc-standard-volume", default="30.345 A^3")
     parser.add_argument("--gcmc-excess-chemical-potential", default="-6.09 kcal/mol")
     parser.add_argument("--gcmc-bulk-sampling-probability", type=float, default=0.0)
+    parser.add_argument(
+        "--replica-exchange",
+        action="store_true",
+        help="Enable Hamiltonian replica exchange, overriding the config. Swaps "
+        "configurations between neighbouring lambda windows, which raises "
+        "adjacent-window overlap directly. Measured overhead is negligible "
+        "(SOMD2 keeps all replicas resident on the GPU rather than swapping "
+        "contexts in and out), but two costs are real: GPU memory scales with "
+        "num_lambda (SOMD2 logs its estimate before starting -- check it fits), "
+        "and mixing work scales as num_lambda^2 per cycle, where cycles = "
+        "runtime / energy_frequency. Raise energy_frequency for REX runs.",
+    )
     return parser.parse_args()
 
 
@@ -62,6 +74,51 @@ def somd2_failure_hints(output: Path) -> str:
             if stripped and patterns.search(stripped) and stripped not in seen:
                 seen.append(stripped)
     return "\n".join(seen[-15:])
+
+
+def resume_mode(output: Path, expected_windows: int) -> str | None:
+    """Decide how SOMD2 should treat whatever is already in `output`.
+
+    SOMD2 restarts each lambda window from its own checkpoint file and raises
+    FileNotFoundError for any that is missing, so a *partial* checkpoint set is not
+    resumable -- passing --restart against one kills the entire leg.
+
+    That is not hypothetical. On 2026-07-31 a cancelled array left a single
+    checkpoint_0.00000.npz behind; the resubmit eight seconds later found it, passed
+    --restart, and every window from lambda=0.1 upwards died immediately on a
+    checkpoint that had never been written. Fifty-two tasks burned nine minutes each
+    and produced nothing, with no error naming the cause.
+
+    So --restart requires a checkpoint for every window. An incomplete set is stale
+    state from a killed run: delete it and rebuild. The SOMD2 checkpoint extension is
+    version-dependent (.s3 on older releases, .npz on 2026.1); matching only one would
+    silently fall through and discard completed windows.
+    """
+    checkpoints = [
+        path
+        for pattern in ("checkpoint_*.s3", "checkpoint_*.npz")
+        for path in output.glob(pattern)
+    ]
+    if len(checkpoints) >= expected_windows > 0:
+        return "--restart"
+    if checkpoints:
+        stale = sorted(path.name for path in checkpoints)
+        print(
+            f"[pipeline] {len(checkpoints)} of {expected_windows} checkpoints present "
+            f"in {output}; SOMD2 cannot restart from a partial set, so this leg will be "
+            f"rebuilt. Discarding stale checkpoints: {', '.join(stale[:4])}"
+            f"{' ...' if len(stale) > 4 else ''}",
+            flush=True,
+        )
+        for path in checkpoints:
+            path.unlink()
+        return "--overwrite"
+    if list(output.glob("config*.yaml")):
+        # A prior launch can fail before the first checkpoint (for example at CUDA
+        # kernel compilation). SOMD2 otherwise refuses its own stale config/topology
+        # files, so rebuild only this uncheckpointed attempt.
+        return "--overwrite"
+    return None
 
 
 def main() -> None:
@@ -94,6 +151,17 @@ def main() -> None:
 
     output = opt.output_dir.resolve()
     output.mkdir(parents=True, exist_ok=True)
+
+    # --replica-exchange overrides the config. Write the amended config beside the
+    # leg so what actually ran is recorded, rather than mutating the shared file.
+    if opt.replica_exchange and not config_payload.get("replica_exchange"):
+        config_payload["replica_exchange"] = True
+        effective = output / "effective_config.yaml"
+        effective.write_text(yaml.safe_dump(config_payload, sort_keys=True))
+        config = effective
+        print(f"replica exchange enabled; effective config written to {effective}",
+              flush=True)
+
     marker = output / "fep_leg.complete.json"
     signature = {
         "leg": opt.leg,
@@ -143,18 +211,9 @@ def main() -> None:
     # SOMD2 checkpoint extension is version-dependent (.s3 on older releases,
     # .npz on 2026.1). Matching only one silently falls through to --overwrite,
     # which discards every completed lambda window and re-runs the whole leg.
-    checkpoints = [
-        path
-        for pattern in ("checkpoint_*.s3", "checkpoint_*.npz")
-        for path in output.glob(pattern)
-    ]
-    if checkpoints:
-        command.append("--restart")
-    elif list(output.glob("config*.yaml")):
-        # A prior launch can fail before the first checkpoint (for example at
-        # CUDA kernel compilation). SOMD2 otherwise refuses its own stale
-        # config/topology files, so rebuild only this uncheckpointed attempt.
-        command.append("--overwrite")
+    resume_flag = resume_mode(output, expected_windows)
+    if resume_flag:
+        command.append(resume_flag)
     if opt.gcmc_bound:
         command.extend(
             [

@@ -71,6 +71,29 @@ done
 [[ -n "$FEP_MANIFEST" && -s "$FEP_MANIFEST" && -s "$FEP_CONFIG" ]] || {
   echo "A valid --manifest and --config are required" >&2; exit 2; }
 [[ "$BATCH" =~ ^[1-9][0-9]*$ ]] || { echo "--batch must be a positive integer" >&2; exit 2; }
+
+# --- keep the stage scripts in step with GitHub -----------------------------------
+# Runs ONCE here on the frontend, before anything is submitted. Deliberately not in
+# fep_edge.slurm: 52 array tasks fetching independently could each get different code,
+# and editing a stage script mid-array invalidates checkpoints via
+# implementation_signature(). Set CSBRT_SYNC=0 to skip, CSBRT_SYNC_REF to pin a ref.
+CSBRT_SYNC="${CSBRT_SYNC:-1}"
+CSBRT_SYNC_REF="${CSBRT_SYNC_REF:-main}"
+if [[ "$CSBRT_SYNC" == "1" ]]; then
+  sync_script="$(dirname "${BASH_SOURCE[0]}")/sync_pipeline.py"
+  if [[ -f "$sync_script" ]]; then
+    echo "== syncing stage scripts against ${CSBRT_SYNC_REF} =="
+    if ! python "$sync_script" --scripts-dir "$(dirname "${BASH_SOURCE[0]}")" \
+         --ref "$CSBRT_SYNC_REF" --apply; then
+      echo "sync failed; refusing to submit against unknown code. " \
+           "Re-run with CSBRT_SYNC=0 to override." >&2
+      exit 1
+    fi
+  else
+    echo "warning: sync_pipeline.py not found beside this script; skipping sync" >&2
+  fi
+fi
+
 [[ -z "$ROWAN_EDGES" || -s "$ROWAN_EDGES" ]] || { echo "--rowan-edges file not found: $ROWAN_EDGES" >&2; exit 2; }
 [[ -z "$ROWAN_EXPERIMENTAL" || -s "$ROWAN_EXPERIMENTAL" ]] || { echo "--experimental file not found: $ROWAN_EXPERIMENTAL" >&2; exit 2; }
 compare=0; [[ -n "$ROWAN_EDGES" && "$AGGREGATE" -eq 1 ]] && compare=1

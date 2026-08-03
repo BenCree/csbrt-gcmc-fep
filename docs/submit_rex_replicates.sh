@@ -10,6 +10,29 @@
 #
 # Expected shape: 52 edges x 3 replicates = 156 array tasks, each doing
 # prepare -> bound leg -> free leg -> analyse.
+
+# --- keep the stage scripts in step with GitHub -----------------------------------
+# Runs ONCE here on the frontend, before anything is submitted. Deliberately not in
+# fep_edge.slurm: 52 array tasks fetching independently could each get different code,
+# and editing a stage script mid-array invalidates checkpoints via
+# implementation_signature(). Set CSBRT_SYNC=0 to skip, CSBRT_SYNC_REF to pin a ref.
+CSBRT_SYNC="${CSBRT_SYNC:-1}"
+CSBRT_SYNC_REF="${CSBRT_SYNC_REF:-main}"
+if [[ "$CSBRT_SYNC" == "1" ]]; then
+  sync_script="$(dirname "${BASH_SOURCE[0]}")/sync_pipeline.py"
+  if [[ -f "$sync_script" ]]; then
+    echo "== syncing stage scripts against ${CSBRT_SYNC_REF} =="
+    if ! python "$sync_script" --scripts-dir "$(dirname "${BASH_SOURCE[0]}")" \
+         --ref "$CSBRT_SYNC_REF" --apply; then
+      echo "sync failed; refusing to submit against unknown code. " \
+           "Re-run with CSBRT_SYNC=0 to override." >&2
+      exit 1
+    fi
+  else
+    echo "warning: sync_pipeline.py not found beside this script; skipping sync" >&2
+  fi
+fi
+
 set -euo pipefail
 
 RUNS="${RUNS:-$HOME/cry/project_2/runs}"
