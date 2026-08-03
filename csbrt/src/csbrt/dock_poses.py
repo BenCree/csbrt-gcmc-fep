@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -69,6 +70,16 @@ def heavy_atom_mask(molecule: Chem.Mol) -> np.ndarray:
     return np.asarray(
         [atom.GetAtomicNum() > 1 for atom in molecule.GetAtoms()], dtype=bool
     )
+
+
+def heavy_coordinates(molecule: Chem.Mol) -> np.ndarray:
+    """Heavy-atom coordinates of this molecule.
+
+    Selected per molecule rather than by reusing the input's mask: GNINA writes poses
+    without hydrogens, so a mask built from an explicit-H input has the wrong length for
+    its own output.
+    """
+    return conformer_coordinates(molecule)[heavy_atom_mask(molecule)]
 
 
 def proper_kabsch_rmsd(reference: np.ndarray, mobile: np.ndarray) -> float:
@@ -129,6 +140,7 @@ def run_gnina(
     autobox_add: float,
     cnn_scoring: str,
     extra_args: list[str] | None = None,
+    ld_library_path: str | None = None,
 ) -> None:
     resolved = gnina_available(binary)
     if resolved is None:
@@ -150,8 +162,32 @@ def run_gnina(
         "--cnn_scoring", cnn_scoring,
     ]
     command.extend(extra_args or [])
+    environment = None
+    if ld_library_path:
+        # The release binaries link cuDNN 9 dynamically despite being called "static".
+        # Carrying it explicitly beats relying on the caller's ambient environment,
+        # which is how this silently breaks under Slurm.
+        environment = dict(os.environ)
+        existing = environment.get("LD_LIBRARY_PATH", "")
+        environment["LD_LIBRARY_PATH"] = (
+            f"{ld_library_path}:{existing}" if existing else ld_library_path
+        )
     print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, check=True)
+    try:
+        subprocess.run(command, check=True, env=environment)
+    except subprocess.CalledProcessError as error:
+        # The "static" release is not fully static and is built against a recent
+        # toolchain. Both of these bite on RHEL-9-era hosts and the raw loader message
+        # is cryptic, so name the fix rather than pass the error through untranslated.
+        raise RuntimeError(
+            f"GNINA exited {error.returncode}. Two common causes:\n"
+            "  * 'libcudnn.so.9: cannot open shared object file' -- the binary needs "
+            "cuDNN 9 at runtime. Put a conda env that has it on LD_LIBRARY_PATH, e.g.\n"
+            "      export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH\n"
+            "  * \"version `GLIBC_2.35' not found\" -- the release is newer than the "
+            "host glibc (RHEL 9 ships 2.34). Use an older GNINA release built against "
+            "an older glibc, or run in a container."
+        ) from error
     if not output.is_file():
         raise RuntimeError(f"GNINA reported success but wrote no output at {output}")
 
@@ -214,6 +250,11 @@ def write_pose_sdfs(
 
 
 def single_record(path: Path) -> Chem.Mol:
+    if path.suffix.lower() == ".pdb":
+        molecule = Chem.MolFromPDBFile(str(path), removeHs=False, sanitize=False)
+        if molecule is None or molecule.GetNumConformers() != 1:
+            raise ValueError(f"Could not read a single conformer from {path}")
+        return molecule
     molecules = [m for m in Chem.SDMolSupplier(str(path), removeHs=False) if m is not None]
     if len(molecules) != 1:
         raise ValueError(f"Expected exactly one record in {path}; found {len(molecules)}")
@@ -247,7 +288,16 @@ def options() -> argparse.Namespace:
     parser.add_argument("--autobox-add", type=float, default=DEFAULT_AUTOBOX_ADD)
     parser.add_argument("--cnn-scoring", default="rescore",
                         choices=("none", "rescore", "refinement", "all"))
+    parser.add_argument("--autobox-reference", type=Path, default=None,
+                        help="Structure defining the docking box (default: --ligand). "
+                             "Set this whenever the receptor is in a different frame "
+                             "from the input ligand, e.g. round-two docking into a "
+                             "GCMC-hydrated receptor.")
     parser.add_argument("--gnina-binary", default="gnina")
+    parser.add_argument("--gnina-ld-library-path", default=None,
+                        help="Prepended to LD_LIBRARY_PATH for the GNINA call. The "
+                             "release binaries need libcudnn.so.9 at runtime; point "
+                             "this at a conda env lib/ that provides it.")
     parser.add_argument("--scramble-only", action="store_true",
                         help="Write the scrambled ligand and stop. Exercises the "
                              "scramble path without needing the GNINA binary.")
@@ -267,8 +317,15 @@ def main() -> None:
     opt = options()
     opt.output_dir.mkdir(parents=True, exist_ok=True)
     crystal = single_record(opt.ligand)
-    mask = heavy_atom_mask(crystal)
-    crystal_heavy = conformer_coordinates(crystal)[mask]
+    # Poses are compared against whatever defined the box, because that is the structure
+    # in the receptor's frame. With --autobox-reference the input ligand can be tens of
+    # Angstrom away (round two: template frame vs production frame) and comparing to it
+    # yields a large number that means nothing.
+    reference = (
+        single_record(opt.autobox_reference)
+        if opt.autobox_reference is not None else crystal
+    )
+    crystal_heavy = heavy_coordinates(reference)
 
     report: dict[str, object] = {
         "ligand_id": opt.ligand_id,
@@ -286,7 +343,7 @@ def main() -> None:
         rng = np.random.default_rng(opt.seed)
         scrambled = scramble_ligand(crystal, rng, opt.scramble_radius)
         scramble_rmsd = in_place_rmsd(
-            crystal_heavy, conformer_coordinates(scrambled)[mask]
+            heavy_coordinates(crystal), heavy_coordinates(scrambled)
         )
         report["scramble_rmsd_angstrom"] = scramble_rmsd
         # The verification half: prove the search actually started somewhere else.
@@ -317,13 +374,14 @@ def main() -> None:
         binary=opt.gnina_binary,
         receptor=opt.receptor,
         ligand=docking_input,
-        autobox_ligand=opt.ligand,
+        autobox_ligand=opt.autobox_reference or opt.ligand,
         output=docked,
         exhaustiveness=opt.exhaustiveness,
         num_modes=opt.num_modes,
         seed=opt.seed,
         autobox_add=opt.autobox_add,
         cnn_scoring=opt.cnn_scoring,
+        ld_library_path=opt.gnina_ld_library_path,
     )
 
     poses = read_poses(docked)
@@ -333,7 +391,15 @@ def main() -> None:
     # for a genuinely unknown ligand there is no crystal pose to recover.
     for entry in written:
         pose = single_record(Path(str(entry["path"])))
-        pose_heavy = conformer_coordinates(pose)[mask]
+        pose_heavy = heavy_coordinates(pose)
+        if pose_heavy.shape != crystal_heavy.shape:
+            # Should not happen for a pose of the same ligand, but a silent shape
+            # mismatch would give a meaningless number, so record the reason instead.
+            entry["rmsd_to_input_pose_angstrom"] = None
+            entry["rmsd_note"] = (
+                f"heavy-atom count {pose_heavy.shape[0]} != input {crystal_heavy.shape[0]}"
+            )
+            continue
         entry["rmsd_to_input_pose_angstrom"] = in_place_rmsd(crystal_heavy, pose_heavy)
         entry["superposed_rmsd_to_input_angstrom"] = proper_kabsch_rmsd(
             crystal_heavy, pose_heavy

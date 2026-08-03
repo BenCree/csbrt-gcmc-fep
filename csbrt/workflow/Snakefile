@@ -144,6 +144,7 @@ rule hydrated_receptor:
         metrics=rules.density_sites.output.metrics,
     output:
         pdb=RUN_ROOT / "dock2" / "{ligand}_{pose}" / "hydrated_receptor.pdb",
+        ligand=RUN_ROOT / "dock2" / "{ligand}_{pose}" / "ligand_production_frame.pdb",
     params:
         script=SRC / "build_docking_receptor.py",
         rundir=lambda w: RUN_ROOT / "gcmc" / f"{w.ligand}_{w.pose}" / "rep1",
@@ -154,7 +155,8 @@ rule hydrated_receptor:
         "{PYTHON} {params.script} --prmtop {input.prmtop} --rst7 {input.rst7} "
         "--output {output.pdb} --water-radius {params.radius} "
         "--site-metrics {input.metrics} --minimum-occupancy {params.occupancy} "
-        "--alignment-reference {params.rundir}/preparation/receptor_input.pdb"
+        "--alignment-reference {params.rundir}/preparation/receptor_input.pdb "
+        "--ligand-out {output.ligand}"
 
 
 rule dock_round2:
@@ -162,6 +164,10 @@ rule dock_round2:
     input:
         receptor=rules.hydrated_receptor.output.pdb,
         ligand=RUN_ROOT / "dock1" / "{ligand}" / "poses" / "{ligand}_{pose}.sdf",
+        # Box reference MUST be in the receptor's frame. The round-one pose is in the
+        # template frame, ~29 A away, and boxing on it searches empty space -- GNINA
+        # still returns poses, just with meaningless affinities.
+        autobox=rules.hydrated_receptor.output.ligand,
     output:
         poses=expand(
             str(RUN_ROOT / "dock2" / "{{ligand}}_{{pose}}" / "poses"
@@ -177,6 +183,7 @@ rule dock_round2:
         "{PYTHON} {params.script} --receptor {input.receptor} --ligand {input.ligand} "
         "--ligand-id {wildcards.ligand}_{wildcards.pose} --output-dir {params.outdir} "
         "--top-n {ROUND2_N} --seed {SEED} --no-scramble "
+        "--autobox-reference {input.autobox} "
         "--exhaustiveness {params.exhaustiveness} --num-modes {params.num_modes} "
         "--gnina-binary {GNINA}"
 

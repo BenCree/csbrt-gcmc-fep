@@ -169,6 +169,11 @@ def options() -> argparse.Namespace:
                         help="Occupancy threshold when --site-metrics is given")
     parser.add_argument("--site-assignment-radius", type=float, default=1.4,
                         help="How close a water must sit to a site to count as on it")
+    parser.add_argument("--ligand-out", type=Path, default=None,
+                        help="Write the stripped ligand here, in the production frame. "
+                             "Round-two docking needs this as --autobox-reference: the "
+                             "round-one pose is in the template frame, tens of Angstrom "
+                             "away, and would box the wrong region of the receptor.")
     parser.add_argument("--keep-ligand", action="store_true",
                         help="Leave the ligand in place (diagnostic only; GNINA should "
                              "dock into an empty site)")
@@ -193,6 +198,13 @@ def main() -> None:
         raise SystemExit(f"No coordinates loaded from {opt.rst7}")
 
     centre = ligand_centroid(structure, opt.ligand_resname)
+
+    if opt.ligand_out is not None:
+        ligand_only = pmd.load_file(str(opt.prmtop), xyz=str(opt.rst7))
+        ligand_only.strip([a.residue.name != opt.ligand_resname for a in ligand_only.atoms])
+        opt.ligand_out.parent.mkdir(parents=True, exist_ok=True)
+        ligand_only.save(str(opt.ligand_out), overwrite=True)
+        print(f"ligand (production frame) -> {opt.ligand_out}")
 
     sites = None
     alignment_rmsd = None
